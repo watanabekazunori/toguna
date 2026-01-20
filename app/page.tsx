@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
+import { getOperatorHomeData, type ClientPerformance, type OperatorHomeData } from "@/lib/supabase-api"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -31,23 +32,11 @@ import {
 
 type Period = "昨日" | "今日" | "今週"
 
-type Project = {
-  id: string
-  name: string
-  color: string
-  bgColor: string
-  callsTarget: number
-  callsCompleted: number
-  connections: number
-  appointments: number
-  status: string
-  statusType: "success" | "warning" | "pending"
-}
-
 type ScheduleSlot = {
   time: string
   project: string
   projectColor: string
+  clientId: string
   remaining: {
     s: number
     a: number
@@ -58,15 +47,36 @@ type ScheduleSlot = {
 
 export default function OperatorHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>("今日")
+  const [homeData, setHomeData] = useState<OperatorHomeData | null>(null)
+  const [isLoadingData, setIsLoadingData] = useState(true)
   const { user, signOut, isLoading } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoadingData(true)
+      try {
+        const data = await getOperatorHomeData()
+        setHomeData(data)
+      } catch (error) {
+        console.error('Failed to fetch home data:', error)
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+    fetchData()
+  }, [])
 
   const handleSignOut = async () => {
     await signOut()
     router.push('/login')
   }
 
-  if (isLoading) {
+  const handleStartCalling = (clientId: string) => {
+    router.push(`/call-list?client=${clientId}`)
+  }
+
+  if (isLoading || isLoadingData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -74,60 +84,29 @@ export default function OperatorHome() {
     )
   }
 
-  const projects: Project[] = [
-    {
-      id: "where",
-      name: "WHERE",
-      color: "text-blue-600",
-      bgColor: "bg-blue-500",
-      callsTarget: 60,
-      callsCompleted: 30,
-      connections: 10,
-      appointments: 2,
-      status: "順調",
-      statusType: "success",
-    },
-    {
-      id: "abc",
-      name: "ABC",
-      color: "text-green-600",
-      bgColor: "bg-green-500",
-      callsTarget: 60,
-      callsCompleted: 0,
-      connections: 0,
-      appointments: 0,
-      status: "午後開始",
-      statusType: "pending",
-    },
-  ]
+  const clients = homeData?.clients || []
+  const totalCalls = homeData?.totalCalls || 0
+  const totalTarget = homeData?.totalTarget || 0
+  const totalAppointments = homeData?.totalAppointments || 0
+  const weeklyAppointmentTarget = homeData?.weeklyAppointmentTarget || 3
+  const remainingCompanies = homeData?.remainingCompanies || { S: 0, A: 0, B: 0 }
 
-  const scheduleSlots: ScheduleSlot[] = [
-    {
-      time: "9:00-10:00",
-      project: "WHERE",
-      projectColor: "bg-blue-500",
-      remaining: { s: 40, a: 250, b: 2110 },
-      isActive: true,
-    },
-    {
-      time: "10:00-11:00",
-      project: "ABC",
-      projectColor: "bg-green-500",
-      remaining: { s: 30, a: 180, b: 1590 },
-      isActive: false,
-    },
-    {
-      time: "11:00-12:00",
-      project: "GHI",
-      projectColor: "bg-purple-500",
-      remaining: { s: 25, a: 200, b: 1800 },
-      isActive: false,
-    },
-  ]
-
-  const totalCalls = projects.reduce((sum, p) => sum + p.callsCompleted, 0)
-  const totalTarget = projects.reduce((sum, p) => sum + p.callsTarget, 0)
-  const totalAppointments = projects.reduce((sum, p) => sum + p.appointments, 0)
+  // スケジュールスロットをクライアントデータから動的に生成
+  const scheduleSlots: ScheduleSlot[] = clients.slice(0, 3).map((client, index) => {
+    const times = ["9:00-10:00", "10:00-11:00", "11:00-12:00"]
+    return {
+      time: times[index] || `${9 + index}:00-${10 + index}:00`,
+      project: client.name,
+      projectColor: client.bgColor,
+      clientId: client.id,
+      remaining: {
+        s: remainingCompanies.S,
+        a: remainingCompanies.A,
+        b: remainingCompanies.B,
+      },
+      isActive: index === 0,
+    }
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900">
@@ -139,7 +118,9 @@ export default function OperatorHome() {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent">
               TOGUNA
             </h1>
-            <Badge className="bg-blue-500 text-white px-4 py-1 text-sm font-medium">WHERE</Badge>
+            {clients.length > 0 && (
+              <Badge className="bg-blue-500 text-white px-4 py-1 text-sm font-medium">{clients[0].name}</Badge>
+            )}
           </div>
 
           {/* User Actions */}
@@ -191,80 +172,105 @@ export default function OperatorHome() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Project Cards */}
-            {projects.map((project) => {
-              const progress = (project.callsCompleted / project.callsTarget) * 100
-              const connectionRate =
-                project.callsCompleted > 0 ? Math.round((project.connections / project.callsCompleted) * 100) : 0
-
-              return (
-                <Card
-                  key={project.id}
-                  className="p-6 hover:shadow-xl transition-all duration-300 border-2 hover:-translate-y-1 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
-                >
-                  <div className="space-y-4">
-                    {/* Project Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${project.bgColor}`}></div>
-                        <h3 className={`text-lg font-bold ${project.color}`}>{project.name}</h3>
-                      </div>
-                      <Badge
-                        variant={
-                          project.statusType === "success"
-                            ? "default"
-                            : project.statusType === "warning"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                        className="font-medium"
-                      >
-                        {project.statusType === "success" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                        {project.statusType === "warning" && <AlertTriangle className="h-3 w-3 mr-1" />}
-                        {project.statusType === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                        {project.status}
-                      </Badge>
-                    </div>
-
-                    {/* Calls Progress */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-slate-600 dark:text-slate-400">架電</span>
-                        <span className="text-lg font-bold">
-                          {project.callsCompleted}/{project.callsTarget}{" "}
-                          <span className="text-sm text-slate-500">({Math.round(progress)}%)</span>
-                        </span>
-                      </div>
-                      <Progress
-                        value={progress}
-                        className="h-3 bg-slate-200 dark:bg-slate-800"
-                        indicatorClassName={`${project.bgColor} transition-all duration-500`}
-                      />
-                    </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4 pt-2">
-                      <div className="space-y-1">
-                        <div className="text-sm text-slate-600 dark:text-slate-400">接続</div>
-                        <div className="text-2xl font-bold">
-                          {project.connections}
-                          <span className="text-sm text-slate-500 ml-1">件</span>
-                        </div>
-                        {connectionRate > 0 && <div className="text-xs text-slate-500">({connectionRate}%)</div>}
-                      </div>
-                      <div className="space-y-1">
-                        <div className="text-sm text-slate-600 dark:text-slate-400">アポ</div>
-                        <div className="text-2xl font-bold flex items-center gap-1">
-                          {project.appointments}
-                          <span className="text-sm text-slate-500">件</span>
-                          {project.appointments > 0 && <Sparkles className="h-4 w-4 text-yellow-500" />}
-                        </div>
-                      </div>
-                    </div>
+            {/* Client Cards */}
+            {clients.length === 0 ? (
+              <Card className="p-6 col-span-full bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border-2 border-dashed">
+                <div className="text-center py-8">
+                  <div className="text-slate-400 mb-4">
+                    <Target className="h-12 w-12 mx-auto" />
                   </div>
-                </Card>
-              )
-            })}
+                  <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    クライアントが登録されていません
+                  </h3>
+                  <p className="text-sm text-slate-500">
+                    ディレクター画面からクライアントを登録してください。
+                  </p>
+                </div>
+              </Card>
+            ) : (
+              clients.map((client) => {
+                const progress = (client.callsCompleted / client.callsTarget) * 100
+                const connectionRate =
+                  client.callsCompleted > 0 ? Math.round((client.connections / client.callsCompleted) * 100) : 0
+
+                return (
+                  <Card
+                    key={client.id}
+                    className="p-6 hover:shadow-xl transition-all duration-300 border-2 hover:-translate-y-1 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
+                  >
+                    <div className="space-y-4">
+                      {/* Client Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${client.bgColor}`}></div>
+                          <h3 className={`text-lg font-bold ${client.color}`}>{client.name}</h3>
+                        </div>
+                        <Badge
+                          variant={
+                            client.statusType === "success"
+                              ? "default"
+                              : client.statusType === "warning"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className="font-medium"
+                        >
+                          {client.statusType === "success" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                          {client.statusType === "warning" && <AlertTriangle className="h-3 w-3 mr-1" />}
+                          {client.statusType === "pending" && <Clock className="h-3 w-3 mr-1" />}
+                          {client.status}
+                        </Badge>
+                      </div>
+
+                      {/* Calls Progress */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-slate-600 dark:text-slate-400">架電</span>
+                          <span className="text-lg font-bold">
+                            {client.callsCompleted}/{client.callsTarget}{" "}
+                            <span className="text-sm text-slate-500">({Math.round(progress)}%)</span>
+                          </span>
+                        </div>
+                        <Progress
+                          value={progress}
+                          className="h-3 bg-slate-200 dark:bg-slate-800"
+                          indicatorClassName={`${client.bgColor} transition-all duration-500`}
+                        />
+                      </div>
+
+                      {/* Stats */}
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div className="space-y-1">
+                          <div className="text-sm text-slate-600 dark:text-slate-400">接続</div>
+                          <div className="text-2xl font-bold">
+                            {client.connections}
+                            <span className="text-sm text-slate-500 ml-1">件</span>
+                          </div>
+                          {connectionRate > 0 && <div className="text-xs text-slate-500">({connectionRate}%)</div>}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-sm text-slate-600 dark:text-slate-400">アポ</div>
+                          <div className="text-2xl font-bold flex items-center gap-1">
+                            {client.appointments}
+                            <span className="text-sm text-slate-500">件</span>
+                            {client.appointments > 0 && <Sparkles className="h-4 w-4 text-yellow-500" />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Start Calling Button */}
+                      <Button
+                        onClick={() => handleStartCalling(client.id)}
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl"
+                      >
+                        <Rocket className="h-4 w-4 mr-2" />
+                        架電開始
+                      </Button>
+                    </div>
+                  </Card>
+                )
+              })
+            )}
 
             {/* Total Summary Card */}
             <Card className="p-6 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-xl shadow-blue-500/30 border-0">
@@ -288,11 +294,11 @@ export default function OperatorHome() {
                       <Target className="h-5 w-5" />
                       <span>合計アポ</span>
                     </div>
-                    <span className="text-2xl font-bold">{totalAppointments}/3件</span>
+                    <span className="text-2xl font-bold">{totalAppointments}/{weeklyAppointmentTarget}件</span>
                   </div>
                   <div className="pt-2">
                     <Progress
-                      value={(totalCalls / totalTarget) * 100}
+                      value={totalTarget > 0 ? (totalCalls / totalTarget) * 100 : 0}
                       className="h-2 bg-blue-400"
                       indicatorClassName="bg-white"
                     />
@@ -436,6 +442,7 @@ export default function OperatorHome() {
                         {slot.isActive && (
                           <Button
                             size="sm"
+                            onClick={() => handleStartCalling(slot.clientId)}
                             className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl"
                           >
                             <Rocket className="h-3 w-3 mr-1" />

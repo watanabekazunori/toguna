@@ -616,6 +616,130 @@ export async function deleteProduct(id: string): Promise<boolean> {
   return true
 }
 
+// ====== オペレーターホーム用データ ======
+
+export type ClientPerformance = {
+  id: string
+  name: string
+  color: string
+  bgColor: string
+  callsTarget: number
+  callsCompleted: number
+  connections: number
+  appointments: number
+  status: string
+  statusType: 'success' | 'warning' | 'pending'
+}
+
+export type OperatorHomeData = {
+  clients: ClientPerformance[]
+  totalCalls: number
+  totalTarget: number
+  totalAppointments: number
+  weeklyAppointmentTarget: number
+  remainingCompanies: {
+    S: number
+    A: number
+    B: number
+  }
+}
+
+const CLIENT_COLORS = [
+  { color: 'text-blue-600', bgColor: 'bg-blue-500' },
+  { color: 'text-green-600', bgColor: 'bg-green-500' },
+  { color: 'text-purple-600', bgColor: 'bg-purple-500' },
+  { color: 'text-orange-600', bgColor: 'bg-orange-500' },
+  { color: 'text-pink-600', bgColor: 'bg-pink-500' },
+  { color: 'text-cyan-600', bgColor: 'bg-cyan-500' },
+]
+
+export async function getOperatorHomeData(): Promise<OperatorHomeData> {
+  const today = new Date().toISOString().split('T')[0]
+
+  const { data: clients } = await supabase
+    .from('clients')
+    .select('*')
+    .order('created_at', { ascending: true })
+
+  const allClients = clients || []
+  const clientPerformances: ClientPerformance[] = []
+  let totalCallsCompleted = 0
+  let totalAppointments = 0
+
+  for (let i = 0; i < allClients.length; i++) {
+    const client = allClients[i]
+    const colorSet = CLIENT_COLORS[i % CLIENT_COLORS.length]
+
+    const { data: todayLogs } = await supabase
+      .from('call_logs')
+      .select('*')
+      .eq('client_id', client.id)
+      .gte('called_at', `${today}T00:00:00`)
+      .lt('called_at', `${today}T23:59:59`)
+
+    const logs = todayLogs || []
+    const callsCompleted = logs.length
+    const connections = logs.filter(c => ['接続', 'アポ獲得'].includes(c.result)).length
+    const appointments = logs.filter(c => c.result === 'アポ獲得').length
+
+    totalCallsCompleted += callsCompleted
+    totalAppointments += appointments
+
+    const callsTarget = 60
+    const progress = (callsCompleted / callsTarget) * 100
+
+    let status = '開始前'
+    let statusType: 'success' | 'warning' | 'pending' = 'pending'
+
+    if (callsCompleted === 0) {
+      status = '開始前'
+      statusType = 'pending'
+    } else if (progress >= 80) {
+      status = '順調'
+      statusType = 'success'
+    } else if (progress >= 50) {
+      status = '進行中'
+      statusType = 'success'
+    } else {
+      status = 'ペース遅れ'
+      statusType = 'warning'
+    }
+
+    clientPerformances.push({
+      id: client.id,
+      name: client.name,
+      color: colorSet.color,
+      bgColor: colorSet.bgColor,
+      callsTarget,
+      callsCompleted,
+      connections,
+      appointments,
+      status,
+      statusType,
+    })
+  }
+
+  const { data: allCompanies } = await supabase
+    .from('companies')
+    .select('rank, status')
+
+  const companies = allCompanies || []
+  const remainingCompanies = {
+    S: companies.filter(c => c.rank === 'S' && c.status !== '完了').length,
+    A: companies.filter(c => c.rank === 'A' && c.status !== '完了').length,
+    B: companies.filter(c => c.rank === 'B' && c.status !== '完了').length,
+  }
+
+  return {
+    clients: clientPerformances,
+    totalCalls: totalCallsCompleted,
+    totalTarget: allClients.length * 60,
+    totalAppointments,
+    weeklyAppointmentTarget: 3,
+    remainingCompanies,
+  }
+}
+
 // ====== 商材マッチング ======
 
 export type ProductMatchResult = {
