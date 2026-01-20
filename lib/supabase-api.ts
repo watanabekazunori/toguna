@@ -654,89 +654,114 @@ const CLIENT_COLORS = [
 ]
 
 export async function getOperatorHomeData(): Promise<OperatorHomeData> {
-  const today = new Date().toISOString().split('T')[0]
+  try {
+    const today = new Date().toISOString().split('T')[0]
 
-  const { data: clients } = await supabase
-    .from('clients')
-    .select('*')
-    .order('created_at', { ascending: true })
-
-  const allClients = clients || []
-  const clientPerformances: ClientPerformance[] = []
-  let totalCallsCompleted = 0
-  let totalAppointments = 0
-
-  for (let i = 0; i < allClients.length; i++) {
-    const client = allClients[i]
-    const colorSet = CLIENT_COLORS[i % CLIENT_COLORS.length]
-
-    const { data: todayLogs } = await supabase
-      .from('call_logs')
+    const { data: clients, error: clientsError } = await supabase
+      .from('clients')
       .select('*')
-      .eq('client_id', client.id)
-      .gte('called_at', `${today}T00:00:00`)
-      .lt('called_at', `${today}T23:59:59`)
+      .order('created_at', { ascending: true })
 
-    const logs = todayLogs || []
-    const callsCompleted = logs.length
-    const connections = logs.filter(c => ['接続', 'アポ獲得'].includes(c.result)).length
-    const appointments = logs.filter(c => c.result === 'アポ獲得').length
-
-    totalCallsCompleted += callsCompleted
-    totalAppointments += appointments
-
-    const callsTarget = 60
-    const progress = (callsCompleted / callsTarget) * 100
-
-    let status = '開始前'
-    let statusType: 'success' | 'warning' | 'pending' = 'pending'
-
-    if (callsCompleted === 0) {
-      status = '開始前'
-      statusType = 'pending'
-    } else if (progress >= 80) {
-      status = '順調'
-      statusType = 'success'
-    } else if (progress >= 50) {
-      status = '進行中'
-      statusType = 'success'
-    } else {
-      status = 'ペース遅れ'
-      statusType = 'warning'
+    if (clientsError) {
+      console.error('Failed to fetch clients:', clientsError)
     }
 
-    clientPerformances.push({
-      id: client.id,
-      name: client.name,
-      color: colorSet.color,
-      bgColor: colorSet.bgColor,
-      callsTarget,
-      callsCompleted,
-      connections,
-      appointments,
-      status,
-      statusType,
-    })
-  }
+    const allClients = clients || []
+    const clientPerformances: ClientPerformance[] = []
+    let totalCallsCompleted = 0
+    let totalAppointments = 0
 
-  const { data: allCompanies } = await supabase
-    .from('companies')
-    .select('rank, status')
+    for (let i = 0; i < allClients.length; i++) {
+      const client = allClients[i]
+      const colorSet = CLIENT_COLORS[i % CLIENT_COLORS.length]
 
-  const companies = allCompanies || []
-  const remainingCompanies = {
-    S: companies.filter(c => c.rank === 'S' && c.status !== '完了').length,
-    A: companies.filter(c => c.rank === 'A' && c.status !== '完了').length,
-    B: companies.filter(c => c.rank === 'B' && c.status !== '完了').length,
-  }
+      const { data: todayLogs, error: logsError } = await supabase
+        .from('call_logs')
+        .select('*')
+        .eq('client_id', client.id)
+        .gte('called_at', `${today}T00:00:00`)
+        .lt('called_at', `${today}T23:59:59`)
 
-  return {
-    clients: clientPerformances,
-    totalCalls: totalCallsCompleted,
-    totalTarget: allClients.length * 60,
-    totalAppointments,
-    weeklyAppointmentTarget: 3,
-    remainingCompanies,
+      if (logsError) {
+        console.error('Failed to fetch call logs:', logsError)
+      }
+
+      const logs = todayLogs || []
+      const callsCompleted = logs.length
+      const connections = logs.filter(c => ['接続', 'アポ獲得'].includes(c.result)).length
+      const appointments = logs.filter(c => c.result === 'アポ獲得').length
+
+      totalCallsCompleted += callsCompleted
+      totalAppointments += appointments
+
+      const callsTarget = 60
+      const progress = (callsCompleted / callsTarget) * 100
+
+      let status = '開始前'
+      let statusType: 'success' | 'warning' | 'pending' = 'pending'
+
+      if (callsCompleted === 0) {
+        status = '開始前'
+        statusType = 'pending'
+      } else if (progress >= 80) {
+        status = '順調'
+        statusType = 'success'
+      } else if (progress >= 50) {
+        status = '進行中'
+        statusType = 'success'
+      } else {
+        status = 'ペース遅れ'
+        statusType = 'warning'
+      }
+
+      clientPerformances.push({
+        id: client.id,
+        name: client.name,
+        color: colorSet.color,
+        bgColor: colorSet.bgColor,
+        callsTarget,
+        callsCompleted,
+        connections,
+        appointments,
+        status,
+        statusType,
+      })
+    }
+
+    const { data: allCompanies, error: companiesError } = await supabase
+      .from('companies')
+      .select('rank, status')
+
+    if (companiesError) {
+      console.error('Failed to fetch companies:', companiesError)
+    }
+
+    const companies = allCompanies || []
+    const remainingCompanies = {
+      S: companies.filter(c => c.rank === 'S' && c.status !== '完了').length,
+      A: companies.filter(c => c.rank === 'A' && c.status !== '完了').length,
+      B: companies.filter(c => c.rank === 'B' && c.status !== '完了').length,
+    }
+
+    return {
+      clients: clientPerformances,
+      totalCalls: totalCallsCompleted,
+      totalTarget: Math.max(allClients.length * 60, 60),
+      totalAppointments,
+      weeklyAppointmentTarget: 3,
+      remainingCompanies,
+    }
+  } catch (error) {
+    console.error('getOperatorHomeData error:', error)
+    // エラー時はデフォルト値を返す
+    return {
+      clients: [],
+      totalCalls: 0,
+      totalTarget: 60,
+      totalAppointments: 0,
+      weeklyAppointmentTarget: 3,
+      remainingCompanies: { S: 0, A: 0, B: 0 },
+    }
   }
 }
 
