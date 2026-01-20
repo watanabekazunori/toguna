@@ -77,7 +77,7 @@ export default function OperatorHome() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    window.location.href = '/login'
   }
 
   const handleStartCalling = (clientId: string) => {
