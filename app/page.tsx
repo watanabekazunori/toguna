@@ -167,9 +167,9 @@ export default function OperatorHome() {
   // 認証チェック：未ログイン時はログインページへリダイレクト
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/login')
+      window.location.href = '/login'
     }
-  }, [isLoading, user, router])
+  }, [isLoading, user])
 
   if (isLoading) {
     return (

@@ -22,12 +22,12 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isLoading && user) {
       if (isDirector) {
-        router.replace('/director')
+        window.location.href = '/director'
       } else {
-        router.replace('/')
+        window.location.href = '/'
       }
     }
-  }, [isLoading, user, isDirector, router])
+  }, [isLoading, user, isDirector])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
