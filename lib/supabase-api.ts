@@ -577,19 +577,32 @@ export async function getProduct(id: string): Promise<Product | null> {
 export type CreateProductInput = Omit<Product, 'id' | 'created_at' | 'updated_at'>
 
 export async function createProduct(input: CreateProductInput): Promise<Product | null> {
+  const dbInput = {
+    client_id: input.client_id,
+    name: input.name,
+    description: input.description,
+    target_industries: input.targetIndustries || [],
+    target_employee_range: input.targetEmployeeRange || { min: 0, max: 10000 },
+    target_revenue: input.targetRevenue,
+    target_locations: input.targetLocations || [],
+    keywords: input.keywords || [],
+    benefits: input.benefits || [],
+    ideal_customer_profile: input.idealCustomerProfile || '',
+  }
+
   const { data, error } = await supabase
     .from('products')
-    .insert(input)
+    .insert(dbInput)
     .select()
     .single()
 
   if (error) {
-    console.error('Failed to create product:', error)
+    console.error('Error creating product:', error)
     return null
   }
+
   return data
 }
-
 export async function deleteProduct(id: string): Promise<boolean> {
   const { error } = await supabase
     .from('products')
@@ -688,4 +701,38 @@ export async function getMatchingCompanies(
   }
 
   return { matches, summary }
+}
+
+// オペレーター作成
+export type CreateOperatorInput = {
+  name: string
+  email: string
+  phone?: string
+  zoom_phone_number?: string
+  zoom_user_id?: string
+  status?: 'active' | 'inactive'
+  role?: 'director' | 'operator'
+}
+
+export async function createOperator(input: CreateOperatorInput): Promise<Operator | null> {
+  const { data, error } = await supabase
+    .from('operators')
+    .insert({
+      name: input.name,
+      email: input.email,
+      phone: input.phone || '',
+      zoom_phone_number: input.zoom_phone_number || '',
+      zoom_user_id: input.zoom_user_id || '',
+      status: input.status || 'active',
+      role: input.role || 'operator',
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error creating operator:', error)
+    return null
+  }
+
+  return data
 }
