@@ -121,8 +121,8 @@ export default function DirectorDashboard() {
   ]
 
   const menuItems = [
-    { title: 'クライアント管理', icon: <Building2 className="h-5 w-5" />, href: '/director/clients', badge: '3件' },
-    { title: 'オペレーター管理', icon: <Users className="h-5 w-5" />, href: '/director/operators', badge: '4名' },
+    { title: 'クライアント管理', icon: <Building2 className="h-5 w-5" />, href: '/director/clients', badge: dashboardStats?.clients.total ? `${dashboardStats.clients.total}件` : undefined },
+    { title: 'オペレーター管理', icon: <Users className="h-5 w-5" />, href: '/director/operators', badge: dashboardStats?.operators.total ? `${dashboardStats.operators.total}名` : undefined },
     { title: '商材管理', icon: <Package className="h-5 w-5" />, href: '/director/products', badge: 'NEW' },
     { title: 'CSVアップロード', icon: <Upload className="h-5 w-5" />, href: '/director/upload' },
     { title: 'レポート', icon: <BarChart3 className="h-5 w-5" />, href: '/director/reports' },
