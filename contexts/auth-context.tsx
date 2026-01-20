@@ -88,24 +88,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // ユーザープロファイルを取得（operatorsテーブルから）
+  // ユーザープロファイルを取得（operatorsテーブルから、タイムアウト付き）
   const fetchUserProfile = async (authUser: User) => {
-    // まずoperatorsテーブルから検索
-    const { data: operator, error } = await supabase
-      .from('operators')
-      .select('id, name, email, role')
-      .eq('email', authUser.email)
-      .single()
+    try {
+      // 5秒でタイムアウト
+      const operatorPromise = supabase
+        .from('operators')
+        .select('id, name, email, role')
+        .eq('email', authUser.email)
+        .single()
 
-    if (operator) {
-      setUser({
-        id: operator.id,
-        email: operator.email,
-        name: operator.name,
-        role: operator.role || 'operator',
-      })
-    } else {
-      // operatorsテーブルにない場合はデフォルト
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Operator query timeout')), 5000)
+      )
+
+      const result = await Promise.race([operatorPromise, timeoutPromise]) as any
+      const operator = result.data
+
+      if (operator) {
+        setUser({
+          id: operator.id,
+          email: operator.email,
+          name: operator.name,
+          role: operator.role || 'operator',
+        })
+      } else {
+        // operatorsテーブルにない場合はデフォルト
+        setUser({
+          id: authUser.id,
+          email: authUser.email || '',
+          name: authUser.email?.split('@')[0] || 'ユーザー',
+          role: 'operator',
+        })
+      }
+    } catch (err) {
+      console.error('fetchUserProfile failed or timed out:', err)
+      // タイムアウト時はデフォルト値を設定
       setUser({
         id: authUser.id,
         email: authUser.email || '',
@@ -125,13 +143,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error }
     }
 
-    // ログイン成功時、即座にユーザー情報を取得してセット
+    // ログイン成功時、即座にユーザー情報を取得してセット（タイムアウト付き）
     if (data.user) {
-      const { data: operator } = await supabase
-        .from('operators')
-        .select('id, name, email, role')
-        .eq('email', data.user.email)
-        .single()
+      let operator = null
+      try {
+        const operatorPromise = supabase
+          .from('operators')
+          .select('id, name, email, role')
+          .eq('email', data.user.email)
+          .single()
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Operator query timeout')), 5000)
+        )
+
+        const result = await Promise.race([operatorPromise, timeoutPromise]) as any
+        operator = result.data
+      } catch (err) {
+        console.error('signIn operator query failed or timed out:', err)
+      }
 
       const authUser: AuthUser = operator ? {
         id: operator.id,
