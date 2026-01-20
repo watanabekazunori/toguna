@@ -40,14 +40,31 @@ export default function LoginPage() {
         return
       }
 
-      // 認証成功後、operatorsテーブルからロールを取得
+      // 認証成功後、operatorsテーブルからロールを取得（タイムアウト付き）
       console.log('Login successful, fetching operator role for:', email)
 
-      const { data: operator, error: operatorError } = await supabase
-        .from('operators')
-        .select('role')
-        .eq('email', email)
-        .single()
+      let operator = null
+      let operatorError = null
+
+      try {
+        // 5秒でタイムアウト
+        const operatorPromise = supabase
+          .from('operators')
+          .select('role')
+          .eq('email', email)
+          .single()
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Operator query timeout')), 5000)
+        )
+
+        const result = await Promise.race([operatorPromise, timeoutPromise]) as any
+        operator = result.data
+        operatorError = result.error
+      } catch (err) {
+        console.error('Operator query failed or timed out:', err)
+        operatorError = err
+      }
 
       console.log('Operator data:', operator, 'Error:', operatorError)
 
