@@ -45,12 +45,12 @@ export default function LoginPage() {
         .eq('email', email)
         .single()
 
+      // window.location.hrefで強制的にページ遷移（セッションが確実に反映される）
       if (operator?.role === 'director') {
-        router.push('/director')
+        window.location.href = '/director'
       } else {
-        router.push('/')
+        window.location.href = '/'
       }
-      router.refresh()
     } catch (err) {
       setError('ログイン中にエラーが発生しました')
     } finally {
