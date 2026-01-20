@@ -314,7 +314,7 @@ export default function CallListPage() {
   useEffect(() => {
     if (!selectedProductId || companies.length === 0) return
 
-    const selectedProduct = products.find((p) => p.id === selectedProductId)
+    const selectedProduct = products.find((p: Product) => p.id === selectedProductId)
     if (!selectedProduct) return
 
     // 簡易マッチングロジック（本来はAPIで計算）
@@ -338,8 +338,7 @@ export default function CallListPage() {
       }
 
       // 地域マッチング
-      const companyPrefecture = company.location?.split(/[都道府県]/)[0] + (company.location?.includes('都') ? '都' : company.location?.includes('道') ? '道' : company.location?.includes('府') ? '府' : '県')
-      if (selectedProduct.targetLocations.some((loc) => company.location?.includes(loc.replace(/[都道府県]$/, '')))) {
+      if (selectedProduct.targetLocations.some((loc: string) => company.location?.includes(loc.replace(/[都道府県]$/, '')))) {
         score += 20
         reasons.push(`所在地（${company.location}）がターゲット地域内`)
       }
@@ -379,8 +378,8 @@ export default function CallListPage() {
     }
 
     // 各企業にマッチ情報を追加
-    setCompanies((prev) =>
-      prev.map((company) => ({
+    setCompanies((prev: CompanyWithAnalysis[]) =>
+      prev.map((company: CompanyWithAnalysis) => ({
         ...company,
         productMatches: [calculateMatch(company)],
       }))
@@ -388,10 +387,10 @@ export default function CallListPage() {
   }, [selectedProductId, products])
 
   // Get selected client
-  const selectedClient = clients.find((c) => c.id === selectedClientId)
+  const selectedClient = clients.find((c: Client) => c.id === selectedClientId)
 
   // Filter companies
-  const filteredCompanies = companies.filter((company) => {
+  const filteredCompanies = companies.filter((company: CompanyWithAnalysis) => {
     const statusMatch = statusFilter === '全て' || company.status === statusFilter
     const searchMatch =
       searchQuery === '' || company.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -399,15 +398,15 @@ export default function CallListPage() {
   })
 
   // Sort companies
-  const sortedCompanies = [...filteredCompanies].sort((a, b) => {
+  const sortedCompanies = [...filteredCompanies].sort((a: CompanyWithAnalysis, b: CompanyWithAnalysis) => {
     switch (sortBy) {
       case 'name':
         return a.name.localeCompare(b.name)
       case 'employees':
         return b.employees - a.employees
       case 'rank':
-        const rankOrder = { S: 0, A: 1, B: 2, C: 3 }
-        return (rankOrder[a.rank] || 4) - (rankOrder[b.rank] || 4)
+        const rankOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3 }
+        return (rankOrder[a.rank] ?? 4) - (rankOrder[b.rank] ?? 4)
       case 'intent':
         // インテントスコアで降順ソート（HOT優先）
         const aIntentScore = a.fullAnalysis?.intent?.score || 0
@@ -463,9 +462,9 @@ export default function CallListPage() {
   // Stats
   const stats = {
     total: companies.length,
-    s: companies.filter((c) => c.rank === 'S').length,
-    a: companies.filter((c) => c.rank === 'A').length,
-    b: companies.filter((c) => c.rank === 'B').length,
+    s: companies.filter((c: CompanyWithAnalysis) => c.rank === 'S').length,
+    a: companies.filter((c: CompanyWithAnalysis) => c.rank === 'A').length,
+    b: companies.filter((c: CompanyWithAnalysis) => c.rank === 'B').length,
   }
 
   const handleCall = (companyId: string) => {
@@ -487,8 +486,8 @@ export default function CallListPage() {
       })
 
       // 企業リストを更新
-      setCompanies((prev) =>
-        prev.map((c) =>
+      setCompanies((prev: CompanyWithAnalysis[]) =>
+        prev.map((c: CompanyWithAnalysis) =>
           c.id === company.id ? { ...c, fullAnalysis } : c
         )
       )
@@ -608,7 +607,7 @@ export default function CallListPage() {
                   <SelectValue placeholder="クライアントを選択..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {clients.map((client) => (
+                  {clients.map((client: Client) => (
                     <SelectItem key={client.id} value={client.id}>
                       {client.name}
                     </SelectItem>
@@ -651,7 +650,7 @@ export default function CallListPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">選択なし</SelectItem>
-                    {products.map((product) => (
+                    {products.map((product: Product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}
                       </SelectItem>
@@ -666,8 +665,8 @@ export default function CallListPage() {
                   onClick={() => {
                     setSelectedProductId('')
                     // マッチ情報をクリア
-                    setCompanies((prev) =>
-                      prev.map((c) => ({ ...c, productMatches: undefined }))
+                    setCompanies((prev: CompanyWithAnalysis[]) =>
+                      prev.map((c: CompanyWithAnalysis) => ({ ...c, productMatches: undefined }))
                     )
                   }}
                 >
@@ -760,7 +759,7 @@ export default function CallListPage() {
                 <Input
                   placeholder="企業名で検索..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                   className="pl-10"
                 />
               </div>
