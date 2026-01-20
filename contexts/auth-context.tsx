@@ -88,13 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true
 
-    // タイムアウト：3秒後に強制的にisLoadingをfalseに
+    // タイムアウト：1秒後に強制的にisLoadingをfalseに
     const timeout = setTimeout(() => {
       if (isMounted) {
         console.warn('[Auth] Session check timeout, setting isLoading to false')
         setIsLoading(false)
       }
-    }, 3000)
+    }, 1000)
 
     // 初期ユーザー取得（getUser()を使用 - より信頼性が高い）
     const initSession = async () => {
