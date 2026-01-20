@@ -24,36 +24,47 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // まず認証
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        if (error.message === 'Invalid login credentials') {
+      if (authError) {
+        if (authError.message === 'Invalid login credentials') {
           setError('メールアドレスまたはパスワードが正しくありません')
         } else {
-          setError(error.message)
+          setError(authError.message)
         }
+        setIsLoading(false)
         return
       }
 
-      // ログイン成功 - ユーザーのロールに応じてリダイレクト
-      const { data: operator } = await supabase
+      // 認証成功後、operatorsテーブルからロールを取得
+      console.log('Login successful, fetching operator role for:', email)
+
+      const { data: operator, error: operatorError } = await supabase
         .from('operators')
         .select('role')
         .eq('email', email)
         .single()
 
-      // window.location.hrefで強制的にページ遷移（セッションが確実に反映される）
-      if (operator?.role === 'director') {
+      console.log('Operator data:', operator, 'Error:', operatorError)
+
+      // ロールに応じてリダイレクト
+      const role = operator?.role
+      console.log('Determined role:', role)
+
+      if (role === 'director') {
+        console.log('Redirecting to /director')
         window.location.href = '/director'
       } else {
+        console.log('Redirecting to /')
         window.location.href = '/'
       }
     } catch (err) {
+      console.error('Login error:', err)
       setError('ログイン中にエラーが発生しました')
-    } finally {
       setIsLoading(false)
     }
   }

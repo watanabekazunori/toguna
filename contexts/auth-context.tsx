@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -17,7 +17,7 @@ type AuthContextType = {
   user: AuthUser | null
   session: Session | null
   isLoading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; user?: AuthUser }>
   signOut: () => Promise<void>
   isDirector: boolean
   isOperator: boolean
@@ -30,20 +30,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabase = createClient()
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    // 初期セッション取得
+    mountedRef.current = true
+
+    // 初期セッション取得（タイムアウト付き）
     const getSession = async () => {
       try {
+        // AbortControllerでタイムアウトを設定
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+
         const { data: { session } } = await supabase.auth.getSession()
+        clearTimeout(timeoutId)
+
+        if (!mountedRef.current) return
+
         setSession(session)
         if (session?.user) {
           await fetchUserProfile(session.user)
         }
-      } catch (error) {
+      } catch (error: any) {
+        // AbortErrorは無視（コンポーネントのアンマウント時）
+        if (error?.name === 'AbortError') {
+          console.log('Session fetch aborted (component unmounted or timeout)')
+          return
+        }
         console.error('Failed to get session:', error)
       } finally {
-        setIsLoading(false)
+        if (mountedRef.current) {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -52,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mountedRef.current) return
+
         setSession(session)
         if (session?.user) {
           await fetchUserProfile(session.user)
@@ -63,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 
     return () => {
+      mountedRef.current = false
       subscription.unsubscribe()
     }
   }, [])
@@ -95,11 +116,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
-    return { error }
+
+    if (error) {
+      return { error }
+    }
+
+    // ログイン成功時、即座にユーザー情報を取得してセット
+    if (data.user) {
+      const { data: operator } = await supabase
+        .from('operators')
+        .select('id, name, email, role')
+        .eq('email', data.user.email)
+        .single()
+
+      const authUser: AuthUser = operator ? {
+        id: operator.id,
+        email: operator.email,
+        name: operator.name,
+        role: operator.role || 'operator',
+      } : {
+        id: data.user.id,
+        email: data.user.email || '',
+        name: data.user.email?.split('@')[0] || 'ユーザー',
+        role: 'operator',
+      }
+
+      setUser(authUser)
+      setSession(data.session)
+      return { error: null, user: authUser }
+    }
+
+    return { error: null }
   }
 
   const signOut = async () => {
