@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -29,7 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createClient()
+  // Supabaseクライアントをメモ化して再作成を防ぐ
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     // 初期セッション取得
@@ -65,26 +66,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [supabase])
 
   // ユーザープロファイルを取得（operatorsテーブルから）
   const fetchUserProfile = async (authUser: User) => {
-    // まずoperatorsテーブルから検索
-    const { data: operator, error } = await supabase
-      .from('operators')
-      .select('id, name, email, role')
-      .eq('email', authUser.email)
-      .single()
+    try {
+      // まずoperatorsテーブルから検索
+      const { data: operator, error } = await supabase
+        .from('operators')
+        .select('id, name, email, role')
+        .eq('email', authUser.email)
+        .single()
 
-    if (operator) {
-      setUser({
-        id: operator.id,
-        email: operator.email,
-        name: operator.name,
-        role: operator.role || 'operator',
-      })
-    } else {
-      // operatorsテーブルにない場合はデフォルト
+      if (operator) {
+        setUser({
+          id: operator.id,
+          email: operator.email,
+          name: operator.name,
+          role: operator.role || 'operator',
+        })
+      } else {
+        // operatorsテーブルにない場合はデフォルト
+        setUser({
+          id: authUser.id,
+          email: authUser.email || '',
+          name: authUser.email?.split('@')[0] || 'ユーザー',
+          role: 'operator',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error)
+      // エラー時もデフォルトユーザーを設定
       setUser({
         id: authUser.id,
         email: authUser.email || '',
