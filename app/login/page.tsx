@@ -54,19 +54,7 @@ export default function LoginPage() {
     }
   }
 
-  // 認証確認中
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">読み込み中...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // 既にログイン済み
+  // 既にログイン済み（isLoading中はログインフォームを表示）
   if (user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">

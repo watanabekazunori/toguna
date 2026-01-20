@@ -86,27 +86,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // 初期セッション取得
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (error) {
-        console.error('Session error:', error)
-        setIsLoading(false)
-        return
-      }
+    let isMounted = true
 
-      setSession(session)
-      if (session?.user) {
-        await fetchUserProfile(session.user)
+    // タイムアウト：3秒後に強制的にisLoadingをfalseに
+    const timeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('[Auth] Session check timeout, setting isLoading to false')
+        setIsLoading(false)
       }
-      setIsLoading(false)
-    }).catch((error) => {
-      console.error('Failed to get session:', error)
-      setIsLoading(false)
-    })
+    }, 3000)
+
+    // 初期セッション取得
+    const initSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+
+        if (!isMounted) return
+        clearTimeout(timeout)
+
+        if (error) {
+          console.error('Session error:', error)
+          setIsLoading(false)
+          return
+        }
+
+        setSession(session)
+        if (session?.user) {
+          await fetchUserProfile(session.user)
+        }
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Failed to get session:', error)
+        if (isMounted) {
+          clearTimeout(timeout)
+          setIsLoading(false)
+        }
+      }
+    }
+
+    initSession()
 
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!isMounted) return
         setSession(session)
         if (session?.user) {
           await fetchUserProfile(session.user)
@@ -118,6 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 
     return () => {
+      isMounted = false
+      clearTimeout(timeout)
       subscription.unsubscribe()
     }
   }, [])
