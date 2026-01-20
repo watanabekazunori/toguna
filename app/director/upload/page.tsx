@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
@@ -12,6 +12,7 @@ import {
   type AIScoreResult,
   type FullAnalysisResult,
 } from '@/lib/api'
+import { getClients, type Client } from '@/lib/supabase-api'
 import { CompanyAnalysisModal } from '@/components/company-analysis-modal'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -91,13 +92,23 @@ export default function UploadPage() {
   const [selectedCompanyForAnalysis, setSelectedCompanyForAnalysis] = useState<UploadedCompany | null>(null)
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
   const [useFullAnalysis, setUseFullAnalysis] = useState(true) // フル分析モード
+  const [clients, setClients] = useState<Client[]>([])
+  const [clientsLoading, setClientsLoading] = useState(true)
 
-  // 仮のクライアントリスト（実際はAPIから取得）
-  const clients = [
-    { id: '1', name: 'WHERE' },
-    { id: '2', name: 'ABC商事' },
-    { id: '3', name: 'GHI物流' },
-  ]
+  // クライアント一覧を取得
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const data = await getClients()
+        setClients(data)
+      } catch (error) {
+        console.error('Failed to fetch clients:', error)
+      } finally {
+        setClientsLoading(false)
+      }
+    }
+    fetchClients()
+  }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]

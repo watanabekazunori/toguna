@@ -375,31 +375,31 @@ export default function OperatorHome() {
                   <h4 className="font-bold">今日の優先アクション</h4>
                 </div>
                 <div className="bg-amber-50 dark:bg-amber-950/30 border-l-4 border-amber-500 p-4 rounded-r-lg space-y-3">
-                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    昨日のNG率が<span className="font-bold text-amber-600">60%</span>
-                    と高めです。（先週比+10%）
-                    <br />
-                    主な理由: <span className="font-semibold">受付突破失敗 48%</span>
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">📌 おすすめ対策:</p>
-                    <ul className="space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>
-                          S判定企業を優先架電（
-                          <span className="font-semibold text-green-600">成功率75%</span>）
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>受付突破スクリプトを見直す</span>
-                      </li>
-                    </ul>
-                    <Button variant="link" className="h-auto p-0 text-blue-600 dark:text-blue-400">
-                      改善案を見る →
-                    </Button>
-                  </div>
+                  {remainingCompanies.S > 0 ? (
+                    <>
+                      <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">S判定企業 {remainingCompanies.S}社</span>が残っています。
+                        優先的にアプローチしましょう。
+                      </p>
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">📌 おすすめ対策:</p>
+                        <ul className="space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
+                          <li className="flex items-start gap-2">
+                            <span className="text-green-500 mt-0.5">•</span>
+                            <span>S判定企業を優先架電</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-green-500 mt-0.5">•</span>
+                            <span>AIトークスクリプトを活用</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      架電データが蓄積されると、AIがあなたに合わせたアドバイスを提供します。
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -412,13 +412,21 @@ export default function OperatorHome() {
                   <h4 className="font-bold">今日の目標</h4>
                 </div>
                 <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30 border-l-4 border-orange-500 p-4 rounded-r-lg">
-                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    WHEREで<span className="font-bold text-orange-600">アポ1件</span>
-                    取れば週間目標達成！
-                    <Flame className="inline h-4 w-4 text-orange-500 ml-1" />
-                    <br />
-                    <span className="font-semibold">S判定の残り35社</span>に集中しましょう。
-                  </p>
+                  {totalAppointments < weeklyAppointmentTarget ? (
+                    <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      週間目標まであと<span className="font-bold text-orange-600">{weeklyAppointmentTarget - totalAppointments}件</span>
+                      のアポが必要です。
+                      <Flame className="inline h-4 w-4 text-orange-500 ml-1" />
+                      <br />
+                      残り<span className="font-semibold">{remainingCompanies.S + remainingCompanies.A + remainingCompanies.B}社</span>に集中しましょう。
+                    </p>
+                  ) : (
+                    <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      🎉 週間目標達成！素晴らしいです！
+                      <br />
+                      引き続き頑張りましょう。
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -426,13 +434,13 @@ export default function OperatorHome() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                   <Trophy className="h-5 w-5" />
-                  <h4 className="font-bold">昨日の良かった点</h4>
+                  <h4 className="font-bold">今日のヒント</h4>
                 </div>
                 <div className="bg-green-50 dark:bg-green-950/30 border-l-4 border-green-500 p-4 rounded-r-lg">
                   <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    接続率<span className="font-bold text-green-600">30%</span>達成！
+                    架電前にAIトークスクリプトを生成して、
                     <br />
-                    （平均25%を上回りました）
+                    効果的なアプローチを準備しましょう！
                     <TrendingUp className="inline h-4 w-4 text-green-500 ml-1" />
                   </p>
                 </div>
@@ -516,31 +524,6 @@ export default function OperatorHome() {
         </section>
       </main>
 
-      {/* Notifications */}
-      <div className="fixed bottom-6 right-6 space-y-3 max-w-md z-50">
-        <Card className="p-4 shadow-2xl border-l-4 border-green-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-700 dark:text-slate-300">山田開発のログ記録完了</p>
-              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
-                確認
-              </Button>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 shadow-2xl border-l-4 border-amber-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-700 dark:text-slate-300">WHEREペース遅れ</p>
-              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
-                対策を見る
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
     </div>
   )
 }

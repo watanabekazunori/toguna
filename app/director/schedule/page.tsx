@@ -82,39 +82,9 @@ export default function SchedulePage() {
         setOperators(operatorsData)
         setClients(clientsData)
 
-        // デモ用スケジュール生成
-        const demoSchedules: ScheduleSlot[] = []
-        operatorsData.forEach((op, opIndex) => {
-          clientsData.forEach((client, clientIndex) => {
-            if ((opIndex + clientIndex) % 3 === 0) {
-              demoSchedules.push({
-                id: `${op.id}-${client.id}-am`,
-                operatorId: op.id,
-                operatorName: op.name,
-                clientId: client.id,
-                clientName: client.name,
-                clientColor: clientColors[clientIndex % clientColors.length],
-                startTime: '09:00',
-                endTime: '12:00',
-                target: 30,
-              })
-            }
-            if ((opIndex + clientIndex) % 2 === 0) {
-              demoSchedules.push({
-                id: `${op.id}-${client.id}-pm`,
-                operatorId: op.id,
-                operatorName: op.name,
-                clientId: client.id,
-                clientName: client.name,
-                clientColor: clientColors[clientIndex % clientColors.length],
-                startTime: '13:00',
-                endTime: '18:00',
-                target: 50,
-              })
-            }
-          })
-        })
-        setSchedules(demoSchedules)
+        // TODO: スケジュールデータはデータベースから取得する予定
+        // 現在はスケジュールテーブルが未実装のため空配列
+        setSchedules([])
       } catch (err) {
         console.error('Failed to fetch data:', err)
       } finally {
