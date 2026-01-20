@@ -529,7 +529,7 @@ export default function CallListPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   if (authLoading) {

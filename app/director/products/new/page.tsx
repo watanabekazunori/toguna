@@ -96,7 +96,7 @@ export default function NewProductPage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -125,7 +125,7 @@ export default function NewProductPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const handleAddKeyword = () => {
@@ -228,11 +228,11 @@ export default function NewProductPage() {
       }
 
       await createProduct(productData)
-      router.push('/director/products')
+      router.replace('/director/products')
     } catch {
       // モック成功
       setTimeout(() => {
-        router.push('/director/products')
+        router.replace('/director/products')
       }, 500)
     }
   }

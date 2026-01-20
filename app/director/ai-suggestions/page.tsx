@@ -56,7 +56,7 @@ export default function AISuggestionsPage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -68,7 +68,7 @@ export default function AISuggestionsPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const handleReanalyze = () => {

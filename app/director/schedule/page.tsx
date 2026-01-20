@@ -68,7 +68,7 @@ export default function SchedulePage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -129,7 +129,7 @@ export default function SchedulePage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const formatDate = (date: Date) => {

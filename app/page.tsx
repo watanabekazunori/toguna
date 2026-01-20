@@ -135,7 +135,7 @@ export default function OperatorHome() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const handleStartCalling = (clientId: string) => {
@@ -167,7 +167,7 @@ export default function OperatorHome() {
   // 認証チェック：未ログイン時はログインページへリダイレクト
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login')
+      router.replace('/login')
     }
   }, [isLoading, user, router])
 

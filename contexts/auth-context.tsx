@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -25,27 +25,49 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// シングルトンのSupabaseクライアント
-const supabase = createClient()
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+
+  // Supabaseクライアントを取得（クライアントサイドでのみ）
+  const getSupabase = () => {
+    if (!supabaseRef.current) {
+      supabaseRef.current = createClient()
+    }
+    return supabaseRef.current
+  }
 
   useEffect(() => {
+    const supabase = getSupabase()
+    let isMounted = true
+
     // 初期セッション取得
     const getSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        setSession(session)
-        if (session?.user) {
-          await fetchUserProfile(session.user)
+        const { data: { session }, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('Session error:', error)
+          if (isMounted) {
+            setIsLoading(false)
+          }
+          return
+        }
+
+        if (isMounted) {
+          setSession(session)
+          if (session?.user) {
+            await fetchUserProfile(session.user)
+          }
+          setIsLoading(false)
         }
       } catch (error) {
         console.error('Failed to get session:', error)
-      } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -54,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return
+
         setSession(session)
         if (session?.user) {
           await fetchUserProfile(session.user)
@@ -65,15 +89,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
     }
   }, [])
 
   // ユーザープロファイルを取得（operatorsテーブルから）
   const fetchUserProfile = async (authUser: User) => {
+    const supabase = getSupabase()
     try {
-      // まずoperatorsテーブルから検索
-      const { data: operator, error } = await supabase
+      const { data: operator } = await supabase
         .from('operators')
         .select('id, name, email, role')
         .eq('email', authUser.email)
@@ -108,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
+    const supabase = getSupabase()
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -116,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    const supabase = getSupabase()
     await supabase.auth.signOut()
     setUser(null)
     setSession(null)

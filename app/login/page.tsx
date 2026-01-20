@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,26 +8,34 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Phone, AlertCircle } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/auth-context'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const { signIn, user, isLoading, isDirector } = useAuth()
+
+  // 既にログインしていたらリダイレクト
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (isDirector) {
+        router.replace('/director')
+      } else {
+        router.replace('/')
+      }
+    }
+  }, [isLoading, user, isDirector, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setIsLoading(true)
+    setIsSubmitting(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { error } = await signIn(email, password)
 
       if (error) {
         if (error.message === 'Invalid login credentials') {
@@ -35,27 +43,39 @@ export default function LoginPage() {
         } else {
           setError(error.message)
         }
+        setIsSubmitting(false)
         return
       }
 
-      // ログイン成功 - ユーザーのロールに応じてリダイレクト
-      const { data: operator } = await supabase
-        .from('operators')
-        .select('role')
-        .eq('email', email)
-        .single()
-
-      if (operator?.role === 'director') {
-        router.push('/director')
-      } else {
-        router.push('/')
-      }
-      router.refresh()
+      // ログイン成功 - AuthContextの状態変更でリダイレクトされる
     } catch (err) {
       setError('ログイン中にエラーが発生しました')
-    } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
+  }
+
+  // 認証確認中
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // 既にログイン済み
+  if (user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">リダイレクト中...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -96,7 +116,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -112,17 +132,17 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isSubmitting}
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl transition-all duration-300"
           >
-            {isLoading ? (
+            {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ログイン中...

@@ -25,7 +25,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login')
+      router.replace('/login')
     }
   }, [isLoading, user, router])
 
@@ -43,7 +43,7 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const settingsSections = [

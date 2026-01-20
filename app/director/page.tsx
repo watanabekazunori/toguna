@@ -75,7 +75,7 @@ export default function DirectorDashboard() {
 
   useEffect(() => {
     if (!isLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [isLoading, isDirector, router])
 
@@ -141,7 +141,7 @@ export default function DirectorDashboard() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   return (
