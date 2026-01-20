@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -25,108 +25,27 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// グローバルシングルトンインスタンス（モジュールレベル）
-let globalSupabase: ReturnType<typeof createClient> | null = null
+// シングルトンSupabaseクライアント
+let supabaseClient: ReturnType<typeof createClient> | null = null
 
-function getGlobalSupabase() {
-  if (!globalSupabase && typeof window !== 'undefined') {
-    globalSupabase = createClient()
+function getSupabaseClient() {
+  if (typeof window === 'undefined') return null
+  if (!supabaseClient) {
+    supabaseClient = createClient()
   }
-  return globalSupabase
+  return supabaseClient
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const isInitializedRef = useRef(false)
-  const initPromiseRef = useRef<Promise<void> | null>(null)
 
-  useEffect(() => {
-    // 既に初期化済みの場合はスキップ（Strict Modeの二重実行対策）
-    if (isInitializedRef.current) {
-      return
-    }
-    isInitializedRef.current = true
+  // ユーザープロファイルを取得
+  const fetchUserProfile = async (authUser: User) => {
+    const supabase = getSupabaseClient()
+    if (!supabase) return
 
-    const supabase = getGlobalSupabase()
-    if (!supabase) {
-      setIsLoading(false)
-      return
-    }
-
-    let isMounted = true
-
-    // 初期セッション取得
-    const initializeAuth = async () => {
-      // 既に初期化中の場合は待機
-      if (initPromiseRef.current) {
-        await initPromiseRef.current
-        return
-      }
-
-      initPromiseRef.current = (async () => {
-        try {
-          const { data: { session }, error } = await supabase.auth.getSession()
-
-          if (error) {
-            console.error('Session error:', error)
-            if (isMounted) {
-              setIsLoading(false)
-            }
-            return
-          }
-
-          if (isMounted) {
-            setSession(session)
-            if (session?.user) {
-              await fetchUserProfile(session.user, supabase)
-            }
-            setIsLoading(false)
-          }
-        } catch (error) {
-          // AbortError は無視（コンポーネントのアンマウント時に発生）
-          if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Auth request aborted (component unmounted)')
-            return
-          }
-          console.error('Failed to get session:', error)
-          if (isMounted) {
-            setIsLoading(false)
-          }
-        } finally {
-          initPromiseRef.current = null
-        }
-      })()
-
-      await initPromiseRef.current
-    }
-
-    initializeAuth()
-
-    // 認証状態の変更を監視
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!isMounted) return
-
-        setSession(session)
-        if (session?.user) {
-          await fetchUserProfile(session.user, supabase)
-        } else {
-          setUser(null)
-        }
-        setIsLoading(false)
-      }
-    )
-
-    return () => {
-      isMounted = false
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  // ユーザープロファイルを取得（operatorsテーブルから）
-  const fetchUserProfile = async (authUser: User, supabase: ReturnType<typeof createClient>) => {
     try {
       const { data: operator } = await supabase
         .from('operators')
@@ -142,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: operator.role || 'operator',
         })
       } else {
-        // operatorsテーブルにない場合はデフォルト
         setUser({
           id: authUser.id,
           email: authUser.email || '',
@@ -151,12 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       }
     } catch (error) {
-      // AbortError は無視
-      if (error instanceof Error && error.name === 'AbortError') {
-        return
-      }
       console.error('Failed to fetch user profile:', error)
-      // エラー時もデフォルトユーザーを設定
       setUser({
         id: authUser.id,
         email: authUser.email || '',
@@ -166,8 +79,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  useEffect(() => {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      setIsLoading(false)
+      return
+    }
+
+    // 初期セッション取得
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error) {
+        console.error('Session error:', error)
+        setIsLoading(false)
+        return
+      }
+
+      setSession(session)
+      if (session?.user) {
+        await fetchUserProfile(session.user)
+      }
+      setIsLoading(false)
+    }).catch((error) => {
+      console.error('Failed to get session:', error)
+      setIsLoading(false)
+    })
+
+    // 認証状態の変更を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setSession(session)
+        if (session?.user) {
+          await fetchUserProfile(session.user)
+        } else {
+          setUser(null)
+        }
+        setIsLoading(false)
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
   const signIn = async (email: string, password: string) => {
-    const supabase = getGlobalSupabase()
+    const supabase = getSupabaseClient()
     if (!supabase) {
       return { error: new Error('Supabase client not available') }
     }
@@ -179,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    const supabase = getGlobalSupabase()
+    const supabase = getSupabaseClient()
     if (!supabase) return
     await supabase.auth.signOut()
     setUser(null)
