@@ -93,59 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let isMounted = true
+    let isInitialized = false
 
-    // タイムアウト：5秒後に強制的にisLoadingをfalseに（十分な余裕を持たせる）
-    const timeout = setTimeout(() => {
-      if (isMounted && isLoading) {
-        console.warn('[Auth] Session check timeout after 5s, setting isLoading to false')
-        setIsLoading(false)
-      }
-    }, 5000)
-
-    // 初期ユーザー取得（getUser()を使用 - より信頼性が高い）
-    const initSession = async () => {
-      try {
-        // getUser()はサーバーからユーザー情報を取得するのでより信頼性が高い
-        const { data: { user: authUser }, error } = await supabase.auth.getUser()
-
-        if (!isMounted) return
-        clearTimeout(timeout)
-
-        if (error) {
-          // AuthSessionMissingError は正常（未ログイン状態）
-          if (error.name !== 'AuthSessionMissingError') {
-            console.error('Auth error:', error)
-          }
-          setIsLoading(false)
-          return
-        }
-
-        if (authUser) {
-          await fetchUserProfile(authUser)
-        }
-        setIsLoading(false)
-      } catch (error: unknown) {
-        // AbortErrorは無視（React Strict Modeでの重複実行による）
-        if (error instanceof Error && error.name === 'AbortError') {
-          console.log('[Auth] Request aborted, ignoring')
-          return
-        }
-        console.error('Failed to get user:', error)
-        if (isMounted) {
-          clearTimeout(timeout)
-          setIsLoading(false)
-        }
-      }
-    }
-
-    initSession()
-
-    // 認証状態の変更を監視
+    // 認証状態の変更を監視（先に登録）
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMounted) return
-        console.log('[Auth] Auth state changed:', event)
+        console.log('[Auth] Auth state changed:', event, session?.user?.email)
+
+        isInitialized = true
         setSession(session)
+
         if (session?.user) {
           await fetchUserProfile(session.user)
         } else {
@@ -155,9 +113,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
+    // getSession()を使用（ローカルストレージから取得、Abortされにくい）
+    const initSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+
+        if (!isMounted) return
+
+        if (error) {
+          console.error('[Auth] getSession error:', error)
+          setIsLoading(false)
+          return
+        }
+
+        // onAuthStateChangeがまだ発火していない場合のみ処理
+        if (!isInitialized) {
+          console.log('[Auth] Init session:', session?.user?.email || 'no session')
+          setSession(session)
+          if (session?.user) {
+            await fetchUserProfile(session.user)
+          }
+          setIsLoading(false)
+        }
+      } catch (error: unknown) {
+        console.error('[Auth] Failed to get session:', error)
+        if (isMounted && !isInitialized) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    initSession()
+
     return () => {
       isMounted = false
-      clearTimeout(timeout)
       subscription.unsubscribe()
     }
   }, [])
