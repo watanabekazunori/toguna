@@ -96,27 +96,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }, 3000)
 
-    // 初期セッション取得
+    // 初期ユーザー取得（getUser()を使用 - より信頼性が高い）
     const initSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        // getUser()はサーバーからユーザー情報を取得するのでより信頼性が高い
+        const { data: { user: authUser }, error } = await supabase.auth.getUser()
 
         if (!isMounted) return
         clearTimeout(timeout)
 
         if (error) {
-          console.error('Session error:', error)
+          // AuthSessionMissingError は正常（未ログイン状態）
+          if (error.name !== 'AuthSessionMissingError') {
+            console.error('Auth error:', error)
+          }
           setIsLoading(false)
           return
         }
 
-        setSession(session)
-        if (session?.user) {
-          await fetchUserProfile(session.user)
+        if (authUser) {
+          await fetchUserProfile(authUser)
         }
         setIsLoading(false)
-      } catch (error) {
-        console.error('Failed to get session:', error)
+      } catch (error: unknown) {
+        // AbortErrorは無視（React Strict Modeでの重複実行による）
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.log('[Auth] Request aborted, ignoring')
+          return
+        }
+        console.error('Failed to get user:', error)
         if (isMounted) {
           clearTimeout(timeout)
           setIsLoading(false)
