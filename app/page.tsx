@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
-import { getOperatorHomeData, type ClientPerformance, type OperatorHomeData } from "@/lib/supabase-api"
+import { getOperatorHomeData, type OperatorHomeData } from "@/lib/supabase-api"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -73,7 +73,7 @@ export default function OperatorHome() {
   }
 
   const handleStartCalling = (clientId: string) => {
-    router.push(`/call-list?client=${clientId}`)
+    router.push(`/call-list?client_id=${clientId}`)
   }
 
   if (isLoading || isLoadingData) {
