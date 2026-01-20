@@ -13,12 +13,19 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  // ログインページへのパス（環境変数チェックの前に確認）
+  const isAuthPath = request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/login/')
+
   // 環境変数チェック
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error('[Middleware] Supabase environment variables are not set')
+    // ログインページの場合は通過させる（無限リダイレクト防止）
+    if (isAuthPath) {
+      return supabaseResponse
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -51,9 +58,6 @@ export async function updateSession(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-
-    // ログインページへのパス（先にチェック）
-    const isAuthPath = request.nextUrl.pathname === '/login' || request.nextUrl.pathname.startsWith('/login/')
 
     // 認証が必要なパス
     const protectedPaths = ['/call-list', '/call', '/call-logs', '/director']
