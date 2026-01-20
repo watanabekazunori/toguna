@@ -232,6 +232,7 @@ export type CallLog = {
   duration: number
   notes: string
   called_at: string
+  created_at: string
 }
 
 export async function getCallLogs(params?: {
@@ -264,7 +265,7 @@ export async function getCallLogs(params?: {
   return data || []
 }
 
-export async function createCallLog(input: Omit<CallLog, 'id' | 'called_at'>): Promise<CallLog | null> {
+export async function createCallLog(input: Omit<CallLog, 'id' | 'called_at' | 'created_at'>): Promise<CallLog | null> {
   const { data, error } = await supabase
     .from('call_logs')
     .insert({
@@ -884,4 +885,164 @@ export async function createOperator(input: CreateOperatorInput): Promise<Operat
   }
 
   return data
+}
+
+// ====== 企業一括登録（CSV用） ======
+
+export type BulkCompanyInput = {
+  name: string
+  industry: string
+  employees: number
+  location?: string
+  phone?: string
+  website?: string
+  client_id: string
+}
+
+export async function bulkCreateCompanies(companies: BulkCompanyInput[]): Promise<{
+  success: boolean
+  imported: number
+  errors: string[]
+  companies: Company[]
+}> {
+  const errors: string[] = []
+  const createdCompanies: Company[] = []
+
+  for (let i = 0; i < companies.length; i++) {
+    const company = companies[i]
+
+    // バリデーション
+    if (!company.name || company.name.trim() === '') {
+      errors.push(`行${i + 1}: 企業名が空です`)
+      continue
+    }
+    if (!company.industry || company.industry.trim() === '') {
+      errors.push(`行${i + 1}: 業種が空です`)
+      continue
+    }
+    if (!company.client_id) {
+      errors.push(`行${i + 1}: クライアントIDが指定されていません`)
+      continue
+    }
+
+    // AIスコアリング
+    const scoreResult = await scoreCompany(company)
+
+    const { data, error } = await supabase
+      .from('companies')
+      .insert({
+        name: company.name.trim(),
+        industry: company.industry.trim(),
+        employees: company.employees || 0,
+        location: company.location?.trim() || null,
+        phone: company.phone?.trim() || null,
+        website: company.website?.trim() || null,
+        client_id: company.client_id,
+        rank: scoreResult.rank,
+        status: 'pending',
+      })
+      .select()
+      .single()
+
+    if (error) {
+      errors.push(`行${i + 1}: ${company.name}の登録に失敗しました - ${error.message}`)
+    } else if (data) {
+      createdCompanies.push(data)
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    imported: createdCompanies.length,
+    errors,
+    companies: createdCompanies,
+  }
+}
+
+// ====== ダッシュボード統計 ======
+
+export type DashboardStats = {
+  calls: {
+    today: number
+    total: number
+  }
+  appointments: {
+    today: number
+    total: number
+    rate: number
+  }
+  operators: {
+    total: number
+    active: number
+  }
+  companies: {
+    total: number
+    byRank: {
+      S: number
+      A: number
+      B: number
+      C: number
+    }
+  }
+  clients: {
+    total: number
+  }
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  try {
+    // 並列でデータ取得
+    const [callLogs, companies, operators, clients] = await Promise.all([
+      getCallLogs(),
+      getCompanies(),
+      getOperators(),
+      getClients(),
+    ])
+
+    // 今日の日付
+    const today = new Date().toISOString().split('T')[0]
+    const todayCalls = callLogs.filter(log => log.called_at?.startsWith(today))
+    const todayAppointments = todayCalls.filter(log => log.result === 'アポ獲得')
+
+    const totalCalls = callLogs.length
+    const totalAppointments = callLogs.filter(log => log.result === 'アポ獲得').length
+    const appointmentRate = totalCalls > 0 ? (totalAppointments / totalCalls) * 100 : 0
+
+    return {
+      calls: {
+        today: todayCalls.length,
+        total: totalCalls,
+      },
+      appointments: {
+        today: todayAppointments.length,
+        total: totalAppointments,
+        rate: appointmentRate,
+      },
+      operators: {
+        total: operators.length,
+        active: operators.filter(op => op.status === 'active').length,
+      },
+      companies: {
+        total: companies.length,
+        byRank: {
+          S: companies.filter(c => c.rank === 'S').length,
+          A: companies.filter(c => c.rank === 'A').length,
+          B: companies.filter(c => c.rank === 'B').length,
+          C: companies.filter(c => c.rank === 'C').length,
+        },
+      },
+      clients: {
+        total: clients.length,
+      },
+    }
+  } catch (error) {
+    console.error('Failed to fetch dashboard stats:', error)
+    return {
+      calls: { today: 0, total: 0 },
+      appointments: { today: 0, total: 0, rate: 0 },
+      operators: { total: 0, active: 0 },
+      companies: { total: 0, byRank: { S: 0, A: 0, B: 0, C: 0 } },
+      clients: { total: 0 },
+    }
+  }
 }

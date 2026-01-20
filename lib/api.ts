@@ -3,18 +3,109 @@
 
 export * from './supabase-api'
 
-// CSVアップロード用の関数（将来の拡張用）
-export async function uploadCompaniesCSV(_formData: FormData): Promise<{
+import { bulkCreateCompanies, type BulkCompanyInput, type Company } from './supabase-api'
+
+// CSVカラム定義
+export const CSV_COLUMNS = {
+  name: '企業名',
+  industry: '業種',
+  employees: '従業員数',
+  location: '所在地',
+  phone: '電話番号',
+  website: 'ウェブサイト',
+} as const
+
+export type CSVRow = {
+  [key: string]: string
+}
+
+// CSVパース関数
+export function parseCSV(content: string): CSVRow[] {
+  const lines = content.trim().split('\n')
+  if (lines.length < 2) return []
+
+  const headers = lines[0].split(',').map(h => h.trim())
+  const rows: CSVRow[] = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim())
+    if (values.length !== headers.length) continue
+
+    const row: CSVRow = {}
+    headers.forEach((header, index) => {
+      row[header] = values[index]
+    })
+    rows.push(row)
+  }
+
+  return rows
+}
+
+// CSVからBulkCompanyInputに変換
+export function csvRowsToCompanies(rows: CSVRow[], clientId: string): BulkCompanyInput[] {
+  return rows.map(row => ({
+    name: row['企業名'] || row['name'] || '',
+    industry: row['業種'] || row['industry'] || '',
+    employees: parseInt(row['従業員数'] || row['employees'] || '0', 10) || 0,
+    location: row['所在地'] || row['location'] || undefined,
+    phone: row['電話番号'] || row['phone'] || undefined,
+    website: row['ウェブサイト'] || row['website'] || undefined,
+    client_id: clientId,
+  }))
+}
+
+// CSVアップロード用の関数
+export async function uploadCompaniesCSV(formData: FormData): Promise<{
   success: boolean
   imported: number
   errors: string[]
+  companies: Company[]
 }> {
-  // TODO: Supabase Storageを使用した実装
-  console.log('CSV upload not yet implemented with Supabase')
-  return {
-    success: false,
-    imported: 0,
-    errors: ['CSVアップロードは現在開発中です'],
+  const file = formData.get('file') as File | null
+  const clientId = formData.get('client_id') as string | null
+
+  if (!file) {
+    return {
+      success: false,
+      imported: 0,
+      errors: ['ファイルが選択されていません'],
+      companies: [],
+    }
+  }
+
+  if (!clientId) {
+    return {
+      success: false,
+      imported: 0,
+      errors: ['クライアントが選択されていません'],
+      companies: [],
+    }
+  }
+
+  try {
+    const content = await file.text()
+    const rows = parseCSV(content)
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        imported: 0,
+        errors: ['CSVファイルにデータがありません'],
+        companies: [],
+      }
+    }
+
+    const companies = csvRowsToCompanies(rows, clientId)
+    const result = await bulkCreateCompanies(companies)
+
+    return result
+  } catch (error) {
+    return {
+      success: false,
+      imported: 0,
+      errors: [error instanceof Error ? error.message : 'CSVの処理中にエラーが発生しました'],
+      companies: [],
+    }
   }
 }
 

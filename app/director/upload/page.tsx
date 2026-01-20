@@ -160,21 +160,30 @@ export default function UploadPage() {
       formData.append('client_id', selectedClientId)
 
       const result = await uploadCompaniesCSV(formData)
-      setUploadResult(result)
+      setUploadResult({
+        success: result.success,
+        imported: result.imported,
+        errors: result.errors,
+      })
 
-      if (result.success && result.imported > 0) {
-        // アップロード成功 - 仮の企業データを作成（実際はAPIレスポンスから取得）
-        const mockCompanies: UploadedCompany[] = Array.from({ length: result.imported }, (_, i) => ({
-          id: `temp-${i}`,
-          name: `アップロード企業${i + 1}`,
-          industry: ['IT', '製造', '不動産', '金融', '小売'][i % 5],
-          employees: Math.floor(Math.random() * 500) + 10,
-          location: ['東京', '大阪', '名古屋', '福岡'][i % 4],
-          phone: '03-0000-0000',
-          website: 'https://example.com',
+      if (result.imported > 0 && result.companies) {
+        // アップロード成功 - 実際の企業データを使用
+        const uploadedCompanies: UploadedCompany[] = result.companies.map((c) => ({
+          id: c.id,
+          name: c.name,
+          industry: c.industry,
+          employees: c.employees,
+          location: c.location || '',
+          phone: c.phone || '',
+          website: c.website || '',
+          scoreResult: {
+            rank: c.rank,
+            score: c.rank === 'S' ? 85 : c.rank === 'A' ? 70 : c.rank === 'B' ? 55 : 40,
+            reasons: [],
+          },
         }))
-        setCompanies(mockCompanies)
-        setUploadState('uploaded')
+        setCompanies(uploadedCompanies)
+        setUploadState('completed') // 既にスコアリング済み
       } else {
         setUploadState('idle')
       }
