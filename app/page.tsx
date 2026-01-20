@@ -84,12 +84,31 @@ export default function OperatorHome() {
     router.push(`/call-list?client_id=${clientId}`)
   }
 
+  // 認証チェック：未ログイン時はログインページへリダイレクト
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/login')
+    }
+  }, [isLoading, user, router])
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-slate-600">認証確認中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // 未ログインの場合は何も表示しない（リダイレクト中）
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">ログインページへ移動中...</p>
         </div>
       </div>
     )
@@ -186,9 +205,11 @@ export default function OperatorHome() {
                 </AvatarFallback>
               </Avatar>
             </div>
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
-            </Button>
+            <Link href="/settings">
+              <Button variant="ghost" size="icon">
+                <Settings className="h-5 w-5" />
+              </Button>
+            </Link>
             <Button variant="ghost" size="icon" onClick={handleSignOut}>
               <LogOut className="h-5 w-5" />
             </Button>
@@ -484,7 +505,12 @@ export default function OperatorHome() {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1 bg-transparent">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 bg-transparent"
+                          onClick={() => alert('時間変更機能は今後実装予定です')}
+                        >
                           <Edit className="h-3 w-3 mr-1" />
                           時間変更
                         </Button>
@@ -516,31 +542,6 @@ export default function OperatorHome() {
         </section>
       </main>
 
-      {/* Notifications */}
-      <div className="fixed bottom-6 right-6 space-y-3 max-w-md z-50">
-        <Card className="p-4 shadow-2xl border-l-4 border-green-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-700 dark:text-slate-300">山田開発のログ記録完了</p>
-              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
-                確認
-              </Button>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 shadow-2xl border-l-4 border-amber-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-700 dark:text-slate-300">WHEREペース遅れ</p>
-              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
-                対策を見る
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
     </div>
   )
 }
