@@ -17,7 +17,7 @@ type AuthContextType = {
   user: AuthUser | null
   session: Session | null
   isLoading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; user?: AuthUser }>
   signOut: () => Promise<void>
   isDirector: boolean
   isOperator: boolean
@@ -42,9 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   // ユーザープロファイルを取得
-  const fetchUserProfile = async (authUser: User) => {
+  const fetchUserProfile = async (authUser: User): Promise<AuthUser | null> => {
     const supabase = getSupabaseClient()
-    if (!supabase) return
+    if (!supabase) return null
 
     try {
       const { data: operator } = await supabase
@@ -54,28 +54,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (operator) {
-        setUser({
+        const authUserData: AuthUser = {
           id: operator.id,
           email: operator.email,
           name: operator.name,
           role: operator.role || 'operator',
-        })
+        }
+        setUser(authUserData)
+        return authUserData
       } else {
-        setUser({
+        const authUserData: AuthUser = {
           id: authUser.id,
           email: authUser.email || '',
           name: authUser.email?.split('@')[0] || 'ユーザー',
           role: 'operator',
-        })
+        }
+        setUser(authUserData)
+        return authUserData
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error)
-      setUser({
+      const authUserData: AuthUser = {
         id: authUser.id,
         email: authUser.email || '',
         name: authUser.email?.split('@')[0] || 'ユーザー',
         role: 'operator',
-      })
+      }
+      setUser(authUserData)
+      return authUserData
     }
   }
 
@@ -88,13 +94,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true
 
-    // タイムアウト：1秒後に強制的にisLoadingをfalseに
+    // タイムアウト：5秒後に強制的にisLoadingをfalseに（十分な余裕を持たせる）
     const timeout = setTimeout(() => {
-      if (isMounted) {
-        console.warn('[Auth] Session check timeout, setting isLoading to false')
+      if (isMounted && isLoading) {
+        console.warn('[Auth] Session check timeout after 5s, setting isLoading to false')
         setIsLoading(false)
       }
-    }, 1000)
+    }, 5000)
 
     // 初期ユーザー取得（getUser()を使用 - より信頼性が高い）
     const initSession = async () => {
@@ -136,8 +142,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!isMounted) return
+        console.log('[Auth] Auth state changed:', event)
         setSession(session)
         if (session?.user) {
           await fetchUserProfile(session.user)
@@ -160,11 +167,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) {
       return { error: new Error('Supabase client not available') }
     }
-    const { error } = await supabase.auth.signInWithPassword({
+
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
-    return { error }
+
+    if (error) {
+      return { error }
+    }
+
+    // ログイン成功時、即座にユーザー情報を取得してセット
+    if (data.user) {
+      setSession(data.session)
+      const authUser = await fetchUserProfile(data.user)
+      setIsLoading(false)
+      return { error: null, user: authUser || undefined }
+    }
+
+    return { error: null }
   }
 
   const signOut = async () => {

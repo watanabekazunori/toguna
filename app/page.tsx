@@ -165,17 +165,14 @@ export default function OperatorHome() {
   }
 
   // 認証チェック：未ログイン時はログインページへリダイレクト
-  // セッション取得に少し時間がかかる場合があるため、少し待ってからリダイレクト
   useEffect(() => {
-    if (!isLoading && !user) {
-      // 既にログインページにいる場合はリダイレクトしない
-      if (window.location.pathname === '/login') return
+    // isLoadingがtrueの間は何もしない（認証状態確認中）
+    if (isLoading) return
 
-      // 少し待ってから再度チェック（セッション復元を待つ）
-      const timer = setTimeout(() => {
-        window.location.href = '/login'
-      }, 500)
-      return () => clearTimeout(timer)
+    // ユーザーが存在しない場合はログインページへリダイレクト
+    if (!user) {
+      console.log('[Home] No user found, redirecting to login')
+      window.location.href = '/login'
     }
   }, [isLoading, user])
 

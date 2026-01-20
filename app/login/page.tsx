@@ -35,7 +35,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      const { error } = await signIn(email, password)
+      const { error, user: loggedInUser } = await signIn(email, password)
 
       if (error) {
         if (error.message === 'Invalid login credentials') {
@@ -47,9 +47,17 @@ export default function LoginPage() {
         return
       }
 
-      // ログイン成功 - 直接リダイレクト（AuthContextの状態変更を待たない）
-      window.location.href = '/'
+      // ログイン成功 - ユーザー情報が取得できたらリダイレクト
+      console.log('[Login] Login successful, user:', loggedInUser)
+
+      // ディレクターかどうかで遷移先を変更
+      if (loggedInUser?.role === 'director') {
+        window.location.href = '/director'
+      } else {
+        window.location.href = '/'
+      }
     } catch (err) {
+      console.error('[Login] Error:', err)
       setError('ログイン中にエラーが発生しました')
       setIsSubmitting(false)
     }
