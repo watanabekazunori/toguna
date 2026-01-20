@@ -47,7 +47,8 @@ export default function LoginPage() {
         return
       }
 
-      // ログイン成功 - AuthContextの状態変更でリダイレクトされる
+      // ログイン成功 - 直接リダイレクト（AuthContextの状態変更を待たない）
+      window.location.href = '/'
     } catch (err) {
       setError('ログイン中にエラーが発生しました')
       setIsSubmitting(false)
