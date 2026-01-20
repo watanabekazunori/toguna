@@ -28,7 +28,9 @@ import {
   Lightbulb,
   Trophy,
   Flame,
+  Users,
 } from "lucide-react"
+import Link from "next/link"
 
 type Period = "昨日" | "今日" | "今週"
 
@@ -49,23 +51,29 @@ export default function OperatorHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>("今日")
   const [homeData, setHomeData] = useState<OperatorHomeData | null>(null)
   const [isLoadingData, setIsLoadingData] = useState(true)
-  const { user, signOut, isLoading } = useAuth()
+  const [dataError, setDataError] = useState<string | null>(null)
+  const { user, signOut, isLoading, isDirector } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
       setIsLoadingData(true)
+      setDataError(null)
       try {
         const data = await getOperatorHomeData()
         setHomeData(data)
       } catch (error) {
         console.error('Failed to fetch home data:', error)
+        setDataError('データの取得に失敗しました')
       } finally {
         setIsLoadingData(false)
       }
     }
-    fetchData()
-  }, [])
+    // 認証が完了してからデータを取得
+    if (!isLoading) {
+      fetchData()
+    }
+  }, [isLoading])
 
   const handleSignOut = async () => {
     await signOut()
@@ -76,10 +84,39 @@ export default function OperatorHome() {
     router.push(`/call-list?client_id=${clientId}`)
   }
 
-  if (isLoading || isLoadingData) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">認証確認中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isLoadingData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">データ読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (dataError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+        <Card className="p-8 max-w-md">
+          <div className="text-center space-y-4">
+            <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto" />
+            <h2 className="text-xl font-bold text-slate-900">エラーが発生しました</h2>
+            <p className="text-slate-600">{dataError}</p>
+            <Button onClick={() => window.location.reload()}>再読み込み</Button>
+          </div>
+        </Card>
       </div>
     )
   }
@@ -125,14 +162,26 @@ export default function OperatorHome() {
 
           {/* User Actions */}
           <div className="flex items-center gap-4">
+            {/* ディレクター画面への切り替えボタン（ディレクターのみ表示） */}
+            {isDirector && (
+              <Link href="/director">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Users className="h-4 w-4" />
+                  ディレクター画面
+                </Button>
+              </Link>
+            )}
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
             </Button>
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
-              <span className="text-sm font-medium">{user?.name || 'オペレーター'}さん</span>
+              <div className="text-right">
+                <span className="text-sm font-medium block">{user?.name || 'オペレーター'}さん</span>
+                <span className="text-xs text-slate-500">{isDirector ? 'ディレクター' : 'オペレーター'}</span>
+              </div>
               <Avatar className="h-9 w-9">
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-500 text-white">
+                <AvatarFallback className={`text-white ${isDirector ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-blue-500 to-cyan-500'}`}>
                   {user?.name?.charAt(0) || 'O'}
                 </AvatarFallback>
               </Avatar>

@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   Clock,
   Package,
+  Headphones,
 } from 'lucide-react'
 import Link from 'next/link'
 import { NotificationDropdown } from '@/components/notification-dropdown'
@@ -158,6 +159,13 @@ export default function DirectorDashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* オペレーター画面への切り替えボタン */}
+            <Link href="/">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Headphones className="h-4 w-4" />
+                オペレーター画面
+              </Button>
+            </Link>
             <NotificationDropdown />
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800">
               <span className="text-sm font-medium">{user?.name || 'ディレクター'}</span>
