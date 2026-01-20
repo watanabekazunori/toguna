@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,34 +8,26 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Phone, AlertCircle } from 'lucide-react'
-import { useAuth } from '@/contexts/auth-context'
+import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const { signIn, user, isLoading, isDirector } = useAuth()
-
-  // 既にログインしていたらリダイレクト
-  useEffect(() => {
-    if (!isLoading && user) {
-      if (isDirector) {
-        window.location.href = '/director'
-      } else {
-        window.location.href = '/'
-      }
-    }
-  }, [isLoading, user, isDirector])
+  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setIsSubmitting(true)
+    setIsLoading(true)
 
     try {
-      const { error, user: loggedInUser } = await signIn(email, password)
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
       if (error) {
         if (error.message === 'Invalid login credentials') {
@@ -43,36 +35,27 @@ export default function LoginPage() {
         } else {
           setError(error.message)
         }
-        setIsSubmitting(false)
         return
       }
 
-      // ログイン成功 - ユーザー情報が取得できたらリダイレクト
-      console.log('[Login] Login successful, user:', loggedInUser)
+      // ログイン成功 - ユーザーのロールに応じてリダイレクト
+      const { data: operator } = await supabase
+        .from('operators')
+        .select('role')
+        .eq('email', email)
+        .single()
 
-      // ディレクターかどうかで遷移先を変更
-      if (loggedInUser?.role === 'director') {
-        window.location.href = '/director'
+      if (operator?.role === 'director') {
+        router.push('/director')
       } else {
-        window.location.href = '/'
+        router.push('/')
       }
+      router.refresh()
     } catch (err) {
-      console.error('[Login] Error:', err)
       setError('ログイン中にエラーが発生しました')
-      setIsSubmitting(false)
+    } finally {
+      setIsLoading(false)
     }
-  }
-
-  // 既にログイン済み（isLoading中はログインフォームを表示）
-  if (user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">リダイレクト中...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -113,7 +96,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isSubmitting}
+              disabled={isLoading}
               className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -129,17 +112,17 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={isSubmitting}
+              disabled={isLoading}
               className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isLoading}
             className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl transition-all duration-300"
           >
-            {isSubmitting ? (
+            {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ログイン中...

@@ -31,28 +31,8 @@ import {
   Users,
 } from "lucide-react"
 import Link from "next/link"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 type Period = "昨日" | "今日" | "今週"
-
-type TimeChangeModal = {
-  isOpen: boolean
-  slotIndex: number | null
-  newTime: string
-}
 
 type ScheduleSlot = {
   time: string
@@ -67,29 +47,11 @@ type ScheduleSlot = {
   isActive: boolean
 }
 
-// 時間選択肢
-const TIME_OPTIONS = [
-  "9:00-10:00",
-  "10:00-11:00",
-  "11:00-12:00",
-  "13:00-14:00",
-  "14:00-15:00",
-  "15:00-16:00",
-  "16:00-17:00",
-  "17:00-18:00",
-]
-
 export default function OperatorHome() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>("今日")
   const [homeData, setHomeData] = useState<OperatorHomeData | null>(null)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
-  const [timeChangeModal, setTimeChangeModal] = useState<TimeChangeModal>({
-    isOpen: false,
-    slotIndex: null,
-    newTime: "",
-  })
-  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
   const { user, signOut, isLoading, isDirector } = useAuth()
   const router = useRouter()
 
@@ -100,26 +62,6 @@ export default function OperatorHome() {
       try {
         const data = await getOperatorHomeData()
         setHomeData(data)
-
-        // スケジュールスロットを初期化
-        if (data.clients.length > 0) {
-          const initialSlots: ScheduleSlot[] = data.clients.slice(0, 3).map((client, index) => {
-            const times = ["9:00-10:00", "10:00-11:00", "11:00-12:00"]
-            return {
-              time: times[index] || `${9 + index}:00-${10 + index}:00`,
-              project: client.name,
-              projectColor: client.bgColor,
-              clientId: client.id,
-              remaining: {
-                s: data.remainingCompanies.S,
-                a: data.remainingCompanies.A,
-                b: data.remainingCompanies.B,
-              },
-              isActive: index === 0,
-            }
-          })
-          setScheduleSlots(initialSlots)
-        }
       } catch (error) {
         console.error('Failed to fetch home data:', error)
         setDataError('データの取得に失敗しました')
@@ -127,54 +69,20 @@ export default function OperatorHome() {
         setIsLoadingData(false)
       }
     }
-    // 認証が完了してユーザーが存在する場合のみデータを取得
-    if (!isLoading && user) {
+    // 認証が完了してからデータを取得
+    if (!isLoading) {
       fetchData()
     }
-  }, [isLoading, user])
+  }, [isLoading])
 
   const handleSignOut = async () => {
     await signOut()
-    router.replace('/login')
+    router.push('/login')
   }
 
   const handleStartCalling = (clientId: string) => {
     router.push(`/call-list?client_id=${clientId}`)
   }
-
-  const handleTimeChange = (slotIndex: number) => {
-    setTimeChangeModal({
-      isOpen: true,
-      slotIndex,
-      newTime: scheduleSlots[slotIndex]?.time || "",
-    })
-  }
-
-  const handleTimeChangeConfirm = () => {
-    if (timeChangeModal.slotIndex !== null && timeChangeModal.newTime) {
-      setScheduleSlots(prev => {
-        const updated = [...prev]
-        updated[timeChangeModal.slotIndex!] = {
-          ...updated[timeChangeModal.slotIndex!],
-          time: timeChangeModal.newTime,
-        }
-        return updated
-      })
-    }
-    setTimeChangeModal({ isOpen: false, slotIndex: null, newTime: "" })
-  }
-
-  // 認証チェック：未ログイン時はログインページへリダイレクト
-  useEffect(() => {
-    // isLoadingがtrueの間は何もしない（認証状態確認中）
-    if (isLoading) return
-
-    // ユーザーが存在しない場合はログインページへリダイレクト
-    if (!user) {
-      console.log('[Home] No user found, redirecting to login')
-      window.location.href = '/login'
-    }
-  }, [isLoading, user])
 
   if (isLoading) {
     return (
@@ -182,18 +90,6 @@ export default function OperatorHome() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-slate-600">認証確認中...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // 未ログインの場合は何も表示しない（リダイレクト中）
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">ログインページへ移動中...</p>
         </div>
       </div>
     )
@@ -232,10 +128,22 @@ export default function OperatorHome() {
   const weeklyAppointmentTarget = homeData?.weeklyAppointmentTarget || 3
   const remainingCompanies = homeData?.remainingCompanies || { S: 0, A: 0, B: 0 }
 
-  // AIアドバイス用の動的データ
-  const firstClientName = clients.length > 0 ? clients[0].name : "クライアント"
-  const targetAchievementNeeded = weeklyAppointmentTarget - totalAppointments
-  const remainingSRank = remainingCompanies.S
+  // スケジュールスロットをクライアントデータから動的に生成
+  const scheduleSlots: ScheduleSlot[] = clients.slice(0, 3).map((client, index) => {
+    const times = ["9:00-10:00", "10:00-11:00", "11:00-12:00"]
+    return {
+      time: times[index] || `${9 + index}:00-${10 + index}:00`,
+      project: client.name,
+      projectColor: client.bgColor,
+      clientId: client.id,
+      remaining: {
+        s: remainingCompanies.S,
+        a: remainingCompanies.A,
+        b: remainingCompanies.B,
+      },
+      isActive: index === 0,
+    }
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900">
@@ -278,11 +186,9 @@ export default function OperatorHome() {
                 </AvatarFallback>
               </Avatar>
             </div>
-            <Link href="/settings">
-              <Button variant="ghost" size="icon">
-                <Settings className="h-5 w-5" />
-              </Button>
-            </Link>
+            <Button variant="ghost" size="icon">
+              <Settings className="h-5 w-5" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={handleSignOut}>
               <LogOut className="h-5 w-5" />
             </Button>
@@ -507,22 +413,11 @@ export default function OperatorHome() {
                 </div>
                 <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30 border-l-4 border-orange-500 p-4 rounded-r-lg">
                   <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    {targetAchievementNeeded > 0 ? (
-                      <>
-                        {firstClientName}で<span className="font-bold text-orange-600">アポ{targetAchievementNeeded}件</span>
-                        取れば週間目標達成！
-                        <Flame className="inline h-4 w-4 text-orange-500 ml-1" />
-                        <br />
-                        <span className="font-semibold">S判定の残り{remainingSRank}社</span>に集中しましょう。
-                      </>
-                    ) : (
-                      <>
-                        週間目標達成おめでとうございます！
-                        <Trophy className="inline h-4 w-4 text-yellow-500 ml-1" />
-                        <br />
-                        引き続き<span className="font-semibold">S判定{remainingSRank}社</span>へのアプローチを続けましょう。
-                      </>
-                    )}
+                    WHEREで<span className="font-bold text-orange-600">アポ1件</span>
+                    取れば週間目標達成！
+                    <Flame className="inline h-4 w-4 text-orange-500 ml-1" />
+                    <br />
+                    <span className="font-semibold">S判定の残り35社</span>に集中しましょう。
                   </p>
                 </div>
               </div>
@@ -589,12 +484,7 @@ export default function OperatorHome() {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-transparent"
-                          onClick={() => handleTimeChange(index)}
-                        >
+                        <Button variant="outline" size="sm" className="flex-1 bg-transparent">
                           <Edit className="h-3 w-3 mr-1" />
                           時間変更
                         </Button>
@@ -626,65 +516,31 @@ export default function OperatorHome() {
         </section>
       </main>
 
-      {/* 時間変更モーダル */}
-      <Dialog
-        open={timeChangeModal.isOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setTimeChangeModal({ isOpen: false, slotIndex: null, newTime: "" })
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>時間帯を変更</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                新しい時間帯を選択
-              </label>
-              <Select
-                value={timeChangeModal.newTime}
-                onValueChange={(value) =>
-                  setTimeChangeModal((prev) => ({ ...prev, newTime: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="時間帯を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIME_OPTIONS.map((time) => (
-                    <SelectItem key={time} value={time}>
-                      {time}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* Notifications */}
+      <div className="fixed bottom-6 right-6 space-y-3 max-w-md z-50">
+        <Card className="p-4 shadow-2xl border-l-4 border-green-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-slate-700 dark:text-slate-300">山田開発のログ記録完了</p>
+              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
+                確認
+              </Button>
             </div>
-            {timeChangeModal.slotIndex !== null && scheduleSlots[timeChangeModal.slotIndex] && (
-              <p className="text-sm text-slate-500">
-                現在: {scheduleSlots[timeChangeModal.slotIndex].time} → {timeChangeModal.newTime || "未選択"}
-              </p>
-            )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setTimeChangeModal({ isOpen: false, slotIndex: null, newTime: "" })}
-            >
-              キャンセル
-            </Button>
-            <Button
-              onClick={handleTimeChangeConfirm}
-              disabled={!timeChangeModal.newTime}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              変更を保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </Card>
+        <Card className="p-4 shadow-2xl border-l-4 border-amber-500 bg-white dark:bg-slate-900 animate-slide-in-from-right">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-slate-700 dark:text-slate-300">WHEREペース遅れ</p>
+              <Button variant="link" className="h-auto p-0 text-xs text-blue-600">
+                対策を見る
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   )
 }
