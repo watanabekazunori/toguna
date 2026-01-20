@@ -127,11 +127,11 @@ export default function OperatorHome() {
         setIsLoadingData(false)
       }
     }
-    // 認証が完了してからデータを取得
-    if (!isLoading) {
+    // 認証が完了してユーザーが存在する場合のみデータを取得
+    if (!isLoading && user) {
       fetchData()
     }
-  }, [isLoading])
+  }, [isLoading, user])
 
   const handleSignOut = async () => {
     await signOut()
