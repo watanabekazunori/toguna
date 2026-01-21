@@ -14,7 +14,7 @@ export {
 
 import { bulkCreateCompanies, type BulkCompanyInput, type Company } from './supabase-api'
 
-// CSVカラム定義
+// CSVカラム定義（シンプル形式）
 export const CSV_COLUMNS = {
   name: '企業名',
   industry: '業種',
@@ -22,6 +22,30 @@ export const CSV_COLUMNS = {
   location: '所在地',
   phone: '電話番号',
   website: 'ウェブサイト',
+} as const
+
+// SalesRadar形式のカラムマッピング
+export const SALES_RADAR_COLUMNS = {
+  name: '法人名称',
+  industry: '業種',
+  industryLarge: '業種(大分類1)',
+  industryMedium: '業種(中分類1)',
+  employees: '従業員数(人)',
+  location: '本社所在地(WEBサイト掲載)',
+  locationRegistry: '本社所在地(登記情報)',
+  prefecture: '都道府県(WEBサイト掲載)',
+  prefectureRegistry: '都道府県(登記情報)',
+  phone: '電話番号',
+  website: 'サイトURL',
+  email: 'メールアドレス',
+  capital: '資本金(円)',
+  revenue: '売上高(円)',
+  ceo: '代表者名',
+  foundedDate: '設立年月日',
+  corporateNumber: '法人番号',
+  corporateGrade: '法人グレード',
+  listingStatus: '上場区分',
+  summary: '法人サマリー',
 } as const
 
 export type CSVRow = {
@@ -50,20 +74,116 @@ export function parseCSV(content: string): CSVRow[] {
   return rows
 }
 
-// CSVからBulkCompanyInputに変換
-export function csvRowsToCompanies(rows: CSVRow[], clientId: string): BulkCompanyInput[] {
-  return rows.map(row => ({
-    name: row['企業名'] || row['name'] || '',
-    industry: row['業種'] || row['industry'] || '',
-    employees: parseInt(row['従業員数'] || row['employees'] || '0', 10) || 0,
-    location: row['所在地'] || row['location'] || undefined,
-    phone: row['電話番号'] || row['phone'] || undefined,
-    website: row['ウェブサイト'] || row['website'] || undefined,
-    client_id: clientId,
-  }))
+// 従業員数の文字列をパース（SalesRadar形式対応）
+function parseEmployeeCount(value: string | undefined): number {
+  if (!value) return 0
+
+  // 数値のみの場合
+  const numMatch = value.match(/^(\d+)$/)
+  if (numMatch) return parseInt(numMatch[1], 10)
+
+  // 「～5未満」「5以上～10未満」などの形式
+  const rangeMatch = value.match(/(\d+)以上/)
+  if (rangeMatch) return parseInt(rangeMatch[1], 10)
+
+  // 「～5未満」の場合は3を返す
+  if (value.includes('未満') && !value.includes('以上')) {
+    const maxMatch = value.match(/(\d+)未満/)
+    if (maxMatch) return Math.floor(parseInt(maxMatch[1], 10) / 2)
+  }
+
+  return 0
 }
 
-// CSVアップロード用の関数
+// CSVからBulkCompanyInputに変換（SalesRadar形式対応）
+export function csvRowsToCompanies(rows: CSVRow[], clientId: string): BulkCompanyInput[] {
+  return rows.map(row => {
+    // SalesRadar形式かシンプル形式か判定
+    const isSalesRadar = '法人名称' in row || 'サイトURL' in row
+
+    let name = ''
+    let industry = ''
+    let employees = 0
+    let location: string | undefined
+    let phone: string | undefined
+    let website: string | undefined
+
+    if (isSalesRadar) {
+      // SalesRadar形式
+      name = row['法人名称'] || ''
+      // 業種は大分類を使用、なければ業種カラム
+      industry = row['業種(大分類1)'] || row['業種']?.split(',')[0]?.split('/')[0] || ''
+      employees = parseEmployeeCount(row['従業員数(人)'])
+      location = row['本社所在地(WEBサイト掲載)'] || row['本社所在地(登記情報)'] ||
+                 (row['都道府県(WEBサイト掲載)'] || row['都道府県(登記情報)'] || '')
+      phone = row['電話番号'] || undefined
+      website = row['サイトURL'] || undefined
+    } else {
+      // シンプル形式
+      name = row['企業名'] || row['name'] || ''
+      industry = row['業種'] || row['industry'] || ''
+      employees = parseInt(row['従業員数'] || row['employees'] || '0', 10) || 0
+      location = row['所在地'] || row['location'] || undefined
+      phone = row['電話番号'] || row['phone'] || undefined
+      website = row['ウェブサイト'] || row['website'] || undefined
+    }
+
+    return {
+      name: name.trim(),
+      industry: industry.trim(),
+      employees,
+      location: location?.trim() || undefined,
+      phone: phone?.trim() || undefined,
+      website: website?.trim() || undefined,
+      client_id: clientId,
+    }
+  })
+}
+
+// SheetJS型定義
+type XLSXType = {
+  read: (data: ArrayBuffer, opts?: { type: string }) => {
+    SheetNames: string[]
+    Sheets: Record<string, unknown>
+  }
+  utils: {
+    sheet_to_json: <T>(sheet: unknown, opts?: { defval: string }) => T[]
+  }
+}
+
+// Excelファイルをパース（SheetJS CDN版）
+export async function parseExcel(file: File): Promise<CSVRow[]> {
+  // SheetJSをCDNから動的にロード
+  if (typeof window !== 'undefined' && !(window as unknown as { XLSX?: unknown }).XLSX) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js'
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error('SheetJS load failed'))
+      document.head.appendChild(script)
+    })
+  }
+
+  const XLSX = (window as unknown as { XLSX: XLSXType }).XLSX
+  const buffer = await file.arrayBuffer()
+  const workbook = XLSX.read(buffer, { type: 'array' })
+
+  // 最初のシートを使用
+  const sheetName = workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[sheetName]
+
+  // シートをJSONに変換
+  const data = XLSX.utils.sheet_to_json<CSVRow>(worksheet, { defval: '' })
+  return data
+}
+
+// ファイルタイプを判定
+function isExcelFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.xlsm')
+}
+
+// CSV/Excelアップロード用の関数
 export async function uploadCompaniesCSV(formData: FormData): Promise<{
   success: boolean
   imported: number
@@ -92,8 +212,15 @@ export async function uploadCompaniesCSV(formData: FormData): Promise<{
   }
 
   try {
-    const content = await file.text()
-    const rows = parseCSV(content)
+    let rows: CSVRow[]
+
+    // ファイルタイプに応じてパース
+    if (isExcelFile(file)) {
+      rows = await parseExcel(file)
+    } else {
+      const content = await file.text()
+      rows = parseCSV(content)
+    }
 
     if (rows.length === 0) {
       return {
