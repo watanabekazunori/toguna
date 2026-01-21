@@ -110,11 +110,17 @@ export default function UploadPage() {
     fetchClients()
   }, [])
 
+  // ファイルがCSVまたはExcel形式かチェック
+  const isValidFileType = (fileName: string): boolean => {
+    const name = fileName.toLowerCase()
+    return name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.xlsm')
+  }
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
-      if (!selectedFile.name.endsWith('.csv')) {
-        setError('CSVファイルを選択してください')
+      if (!isValidFileType(selectedFile.name)) {
+        setError('CSV または Excel (.xlsx, .xls, .xlsm) ファイルを選択してください')
         return
       }
       setFile(selectedFile)
@@ -129,8 +135,8 @@ export default function UploadPage() {
     e.preventDefault()
     const droppedFile = e.dataTransfer.files[0]
     if (droppedFile) {
-      if (!droppedFile.name.endsWith('.csv')) {
-        setError('CSVファイルを選択してください')
+      if (!isValidFileType(droppedFile.name)) {
+        setError('CSV または Excel (.xlsx, .xls, .xlsm) ファイルを選択してください')
         return
       }
       setFile(droppedFile)
@@ -379,7 +385,7 @@ export default function UploadPage() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  CSVアップロード
+                  企業リストアップロード
                 </h2>
                 <p className="text-sm text-slate-500">
                   企業リストをアップロードしてAIスコアリング
@@ -466,10 +472,10 @@ export default function UploadPage() {
                     <Upload className="h-12 w-12 mx-auto text-slate-400" />
                     <div>
                       <p className="text-lg font-medium text-slate-700 dark:text-slate-300">
-                        CSVファイルをドラッグ＆ドロップ
+                        CSV/Excelファイルをドラッグ＆ドロップ
                       </p>
                       <p className="text-sm text-slate-500">
-                        または
+                        .csv, .xlsx, .xls, .xlsm 対応
                       </p>
                     </div>
                     <Button
@@ -481,7 +487,7 @@ export default function UploadPage() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xls,.xlsm"
                       className="hidden"
                       onChange={handleFileSelect}
                     />
