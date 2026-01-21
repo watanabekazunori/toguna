@@ -3,6 +3,15 @@
 
 export * from './supabase-api'
 
+// スクレイパーモジュールをre-export
+export {
+  scrapeCompanyData,
+  analyzeScrapedData,
+  bulkScrapeCompanies,
+  type ScrapedData,
+  type IntentSignalFromScraping,
+} from './scraper'
+
 import { bulkCreateCompanies, type BulkCompanyInput, type Company } from './supabase-api'
 
 // CSVカラム定義

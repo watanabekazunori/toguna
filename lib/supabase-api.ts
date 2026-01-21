@@ -146,6 +146,29 @@ export type Company = {
   client_id: string
   created_at: string
   updated_at?: string
+  // インテント分析
+  intent_score?: number
+  intent_level?: 'hot' | 'warm' | 'cold'
+  intent_signals?: Array<{
+    type: string
+    title: string
+    description: string
+    date: string
+    strength: string
+    source?: string
+  }>
+  buying_stage?: 'awareness' | 'consideration' | 'decision' | 'unknown'
+  best_contact_timing?: string
+  intent_summary?: string
+  // スクレイピングデータ
+  scraped_data?: Record<string, unknown>
+  scraped_at?: string
+  // 企業分析
+  analysis_data?: Record<string, unknown>
+  analyzed_at?: string
+  // スコアリング詳細
+  score_value?: number
+  score_reasons?: string[]
 }
 
 export async function getCompanies(params?: {
@@ -899,7 +922,15 @@ export type BulkCompanyInput = {
   client_id: string
 }
 
-export async function bulkCreateCompanies(companies: BulkCompanyInput[]): Promise<{
+export type BulkCreateOptions = {
+  skipScraping?: boolean // スクレイピングをスキップ
+  onProgress?: (current: number, total: number, companyName: string, phase: 'insert' | 'scrape' | 'analyze') => void
+}
+
+export async function bulkCreateCompanies(
+  companies: BulkCompanyInput[],
+  options?: BulkCreateOptions
+): Promise<{
   success: boolean
   imported: number
   errors: string[]
@@ -907,9 +938,16 @@ export async function bulkCreateCompanies(companies: BulkCompanyInput[]): Promis
 }> {
   const errors: string[] = []
   const createdCompanies: Company[] = []
+  const skipScraping = options?.skipScraping ?? false
+  const onProgress = options?.onProgress
 
+  // フェーズ1: 企業をDBに登録
   for (let i = 0; i < companies.length; i++) {
     const company = companies[i]
+
+    if (onProgress) {
+      onProgress(i + 1, companies.length, company.name, 'insert')
+    }
 
     // バリデーション
     if (!company.name || company.name.trim() === '') {
@@ -939,6 +977,8 @@ export async function bulkCreateCompanies(companies: BulkCompanyInput[]): Promis
         website: company.website?.trim() || null,
         client_id: company.client_id,
         rank: scoreResult.rank,
+        score_value: scoreResult.score,
+        score_reasons: scoreResult.reasons,
         status: 'pending',
       })
       .select()
@@ -951,11 +991,124 @@ export async function bulkCreateCompanies(companies: BulkCompanyInput[]): Promis
     }
   }
 
+  // フェーズ2: スクレイピング & インテント分析（オプション）
+  if (!skipScraping && createdCompanies.length > 0) {
+    const { scrapeCompanyData, analyzeScrapedData } = await import('./scraper')
+
+    for (let i = 0; i < createdCompanies.length; i++) {
+      const company = createdCompanies[i]
+
+      try {
+        // スクレイピング実行
+        if (onProgress) {
+          onProgress(i + 1, createdCompanies.length, company.name, 'scrape')
+        }
+
+        const scrapedData = await scrapeCompanyData(company.name, company.website)
+
+        // インテント分析
+        if (onProgress) {
+          onProgress(i + 1, createdCompanies.length, company.name, 'analyze')
+        }
+
+        const intentAnalysis = analyzeScrapedData(scrapedData)
+
+        // 企業分析も実行
+        const companyAnalysis = await analyzeCompany(company)
+
+        // DBを更新
+        const { error: updateError } = await supabase
+          .from('companies')
+          .update({
+            // スクレイピングデータ
+            scraped_data: scrapedData,
+            scraped_at: new Date().toISOString(),
+
+            // インテント分析結果
+            intent_score: intentAnalysis.intentScore,
+            intent_level: intentAnalysis.intentLevel,
+            intent_signals: intentAnalysis.signals,
+            buying_stage: intentAnalysis.buyingStage,
+            intent_summary: intentAnalysis.summary,
+
+            // 企業分析結果
+            analysis_data: companyAnalysis,
+            analyzed_at: new Date().toISOString(),
+
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', company.id)
+
+        if (updateError) {
+          console.error(`企業${company.name}の分析データ保存エラー:`, updateError)
+          errors.push(`${company.name}: 分析データの保存に失敗`)
+        }
+      } catch (e) {
+        console.error(`企業${company.name}のスクレイピングエラー:`, e)
+        errors.push(`${company.name}: 情報収集中にエラー発生`)
+      }
+
+      // レート制限対策：1秒待機
+      if (i < createdCompanies.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
+
   return {
-    success: errors.length === 0,
+    success: errors.filter(e => !e.includes('分析') && !e.includes('情報収集')).length === 0,
     imported: createdCompanies.length,
     errors,
     companies: createdCompanies,
+  }
+}
+
+// 単一企業のスクレイピング＆分析を実行
+export async function scrapeAndAnalyzeCompany(companyId: string): Promise<{
+  success: boolean
+  error?: string
+}> {
+  try {
+    const company = await getCompany(companyId)
+    if (!company) {
+      return { success: false, error: '企業が見つかりません' }
+    }
+
+    const { scrapeCompanyData, analyzeScrapedData } = await import('./scraper')
+
+    // スクレイピング実行
+    const scrapedData = await scrapeCompanyData(company.name, company.website)
+
+    // インテント分析
+    const intentAnalysis = analyzeScrapedData(scrapedData)
+
+    // 企業分析
+    const companyAnalysis = await analyzeCompany(company)
+
+    // DBを更新
+    const { error: updateError } = await supabase
+      .from('companies')
+      .update({
+        scraped_data: scrapedData,
+        scraped_at: new Date().toISOString(),
+        intent_score: intentAnalysis.intentScore,
+        intent_level: intentAnalysis.intentLevel,
+        intent_signals: intentAnalysis.signals,
+        buying_stage: intentAnalysis.buyingStage,
+        intent_summary: intentAnalysis.summary,
+        analysis_data: companyAnalysis,
+        analyzed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', companyId)
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '不明なエラー' }
   }
 }
 
