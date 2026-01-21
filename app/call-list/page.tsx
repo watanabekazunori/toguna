@@ -487,13 +487,13 @@ export default function CallListPage() {
                 </div>
               </div>
               <div className="flex-1 max-w-sm">
-                <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                <Select value={selectedProductId || 'none'} onValueChange={(v) => setSelectedProductId(v === 'none' ? '' : v)}>
                   <SelectTrigger className="bg-white dark:bg-slate-900">
                     <Package className="h-4 w-4 mr-2 text-purple-600" />
                     <SelectValue placeholder="商材を選択..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">選択なし</SelectItem>
+                    <SelectItem value="none">選択なし</SelectItem>
                     {products.map((product: Product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}

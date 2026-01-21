@@ -1343,16 +1343,23 @@ export async function bulkCreateCompanies(
 }> {
   const errors: string[] = []
   const createdCompanies: Company[] = []
-  const skipScraping = options?.skipScraping ?? false
+  const skipScraping = options?.skipScraping ?? true // デフォルトでスクレイピングをスキップ（高速化）
   const onProgress = options?.onProgress
 
-  // フェーズ1: 企業をDBに登録
+  // バリデーション済みデータを準備
+  const validCompanies: Array<{
+    index: number
+    company: BulkCompanyInput
+    scoreResult: AIScoreResult
+  }> = []
+
+  // フェーズ1: バリデーション & スコアリング（並列処理可能）
+  if (onProgress) {
+    onProgress(0, companies.length, 'バリデーション中...', 'insert')
+  }
+
   for (let i = 0; i < companies.length; i++) {
     const company = companies[i]
-
-    if (onProgress) {
-      onProgress(i + 1, companies.length, company.name, 'insert')
-    }
 
     // バリデーション
     if (!company.name || company.name.trim() === '') {
@@ -1368,33 +1375,60 @@ export async function bulkCreateCompanies(
       continue
     }
 
-    // AIスコアリング
+    // AIスコアリング（同期的に計算、高速）
     const scoreResult = await scoreCompany(company)
 
+    validCompanies.push({ index: i, company, scoreResult })
+  }
+
+  // フェーズ2: バッチ挿入（50件ずつ）
+  const BATCH_SIZE = 50
+  const totalBatches = Math.ceil(validCompanies.length / BATCH_SIZE)
+
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    const start = batchIndex * BATCH_SIZE
+    const end = Math.min(start + BATCH_SIZE, validCompanies.length)
+    const batch = validCompanies.slice(start, end)
+
+    if (onProgress) {
+      onProgress(
+        end,
+        validCompanies.length,
+        `${end}/${validCompanies.length}件を登録中...`,
+        'insert'
+      )
+    }
+
+    // バッチ挿入データを構築
+    const insertData = batch.map(({ company, scoreResult }) => ({
+      name: company.name.trim(),
+      industry: company.industry.trim(),
+      employees: company.employees || 0,
+      location: company.location?.trim() || null,
+      phone: company.phone?.trim() || null,
+      website: company.website?.trim() || null,
+      client_id: company.client_id,
+      rank: scoreResult.rank,
+      score_value: scoreResult.score,
+      score_reasons: scoreResult.reasons,
+      status: 'pending',
+      salesradar_data: company.salesradar_data || null,
+    }))
+
+    // 一括INSERT
     const { data, error } = await supabase
       .from('companies')
-      .insert({
-        name: company.name.trim(),
-        industry: company.industry.trim(),
-        employees: company.employees || 0,
-        location: company.location?.trim() || null,
-        phone: company.phone?.trim() || null,
-        website: company.website?.trim() || null,
-        client_id: company.client_id,
-        rank: scoreResult.rank,
-        score_value: scoreResult.score,
-        score_reasons: scoreResult.reasons,
-        status: 'pending',
-        // SalesRadar元データを保存（全カラム）
-        salesradar_data: company.salesradar_data || null,
-      })
+      .insert(insertData)
       .select()
-      .single()
 
     if (error) {
-      errors.push(`行${i + 1}: ${company.name}の登録に失敗しました - ${error.message}`)
+      // バッチ全体がエラーの場合、個別に再試行
+      console.error(`Batch ${batchIndex + 1} error:`, error)
+      for (const { index, company } of batch) {
+        errors.push(`行${index + 1}: ${company.name}の登録に失敗しました - ${error.message}`)
+      }
     } else if (data) {
-      createdCompanies.push(data)
+      createdCompanies.push(...data)
     }
   }
 
