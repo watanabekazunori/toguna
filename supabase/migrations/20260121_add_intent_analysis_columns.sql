@@ -10,6 +10,12 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS intent_summary TEXT;
 
 -- スクレイピング収集データ
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS scraped_data JSONB DEFAULT '{}'::jsonb;
+
+-- SalesRadar元データ（全カラム保存用）
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS salesradar_data JSONB DEFAULT '{}'::jsonb;
+-- salesradar_dataには以下を格納:
+-- アップロード時のExcel/CSVの全カラムデータをそのまま保存
+-- 例: { "法人名称": "...", "法人番号": "...", "業種": "...", "売上高(円)": "...", ... }
 -- scraped_dataには以下を格納:
 -- {
 --   "companyInfo": { "description": "", "foundedYear": null, "ceo": "", "headquarters": "", "employeeCount": null },

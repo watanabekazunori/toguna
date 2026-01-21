@@ -136,6 +136,8 @@ export function csvRowsToCompanies(rows: CSVRow[], clientId: string): BulkCompan
       phone: phone?.trim() || undefined,
       website: website?.trim() || undefined,
       client_id: clientId,
+      // SalesRadar形式の場合は全カラムを保存
+      salesradar_data: isSalesRadar ? row : undefined,
     }
   })
 }
