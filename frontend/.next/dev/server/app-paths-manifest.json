@@ -1,0 +1,5 @@
+{
+  "/call-list/page": "app/call-list/page.js",
+  "/director/upload/page": "app/director/upload/page.js",
+  "/page": "app/page.js"
+}
