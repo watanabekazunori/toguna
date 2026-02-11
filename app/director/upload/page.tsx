@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
@@ -12,6 +12,7 @@ import {
   type AIScoreResult,
   type FullAnalysisResult,
 } from '@/lib/api'
+import { getClients, type Client } from '@/lib/supabase-api'
 import { CompanyAnalysisModal } from '@/components/company-analysis-modal'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -91,19 +92,35 @@ export default function UploadPage() {
   const [selectedCompanyForAnalysis, setSelectedCompanyForAnalysis] = useState<UploadedCompany | null>(null)
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
   const [useFullAnalysis, setUseFullAnalysis] = useState(true) // フル分析モード
+  const [clients, setClients] = useState<Client[]>([])
+  const [clientsLoading, setClientsLoading] = useState(true)
 
-  // 仮のクライアントリスト（実際はAPIから取得）
-  const clients = [
-    { id: '1', name: 'WHERE' },
-    { id: '2', name: 'ABC商事' },
-    { id: '3', name: 'GHI物流' },
-  ]
+  // クライアント一覧を取得
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const data = await getClients()
+        setClients(data)
+      } catch (error) {
+        console.error('Failed to fetch clients:', error)
+      } finally {
+        setClientsLoading(false)
+      }
+    }
+    fetchClients()
+  }, [])
+
+  // ファイルがCSVまたはExcel形式かチェック
+  const isValidFileType = (fileName: string): boolean => {
+    const name = fileName.toLowerCase()
+    return name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.xlsm')
+  }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
-      if (!selectedFile.name.endsWith('.csv')) {
-        setError('CSVファイルを選択してください')
+      if (!isValidFileType(selectedFile.name)) {
+        setError('CSV または Excel (.xlsx, .xls, .xlsm) ファイルを選択してください')
         return
       }
       setFile(selectedFile)
@@ -118,8 +135,8 @@ export default function UploadPage() {
     e.preventDefault()
     const droppedFile = e.dataTransfer.files[0]
     if (droppedFile) {
-      if (!droppedFile.name.endsWith('.csv')) {
-        setError('CSVファイルを選択してください')
+      if (!isValidFileType(droppedFile.name)) {
+        setError('CSV または Excel (.xlsx, .xls, .xlsm) ファイルを選択してください')
         return
       }
       setFile(droppedFile)
@@ -149,21 +166,30 @@ export default function UploadPage() {
       formData.append('client_id', selectedClientId)
 
       const result = await uploadCompaniesCSV(formData)
-      setUploadResult(result)
+      setUploadResult({
+        success: result.success,
+        imported: result.imported,
+        errors: result.errors,
+      })
 
-      if (result.success && result.imported > 0) {
-        // アップロード成功 - 仮の企業データを作成（実際はAPIレスポンスから取得）
-        const mockCompanies: UploadedCompany[] = Array.from({ length: result.imported }, (_, i) => ({
-          id: `temp-${i}`,
-          name: `アップロード企業${i + 1}`,
-          industry: ['IT', '製造', '不動産', '金融', '小売'][i % 5],
-          employees: Math.floor(Math.random() * 500) + 10,
-          location: ['東京', '大阪', '名古屋', '福岡'][i % 4],
-          phone: '03-0000-0000',
-          website: 'https://example.com',
+      if (result.imported > 0 && result.companies) {
+        // アップロード成功 - 実際の企業データを使用
+        const uploadedCompanies: UploadedCompany[] = result.companies.map((c) => ({
+          id: c.id,
+          name: c.name,
+          industry: c.industry,
+          employees: c.employees,
+          location: c.location || '',
+          phone: c.phone || '',
+          website: c.website || '',
+          scoreResult: {
+            rank: c.rank,
+            score: c.rank === 'S' ? 85 : c.rank === 'A' ? 70 : c.rank === 'B' ? 55 : 40,
+            reasons: [],
+          },
         }))
-        setCompanies(mockCompanies)
-        setUploadState('uploaded')
+        setCompanies(uploadedCompanies)
+        setUploadState('completed') // 既にスコアリング済み
       } else {
         setUploadState('idle')
       }
@@ -298,7 +324,7 @@ export default function UploadPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   if (authLoading || !isDirector) {
@@ -359,7 +385,7 @@ export default function UploadPage() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  CSVアップロード
+                  企業リストアップロード
                 </h2>
                 <p className="text-sm text-slate-500">
                   企業リストをアップロードしてAIスコアリング
@@ -446,10 +472,10 @@ export default function UploadPage() {
                     <Upload className="h-12 w-12 mx-auto text-slate-400" />
                     <div>
                       <p className="text-lg font-medium text-slate-700 dark:text-slate-300">
-                        CSVファイルをドラッグ＆ドロップ
+                        CSV/Excelファイルをドラッグ＆ドロップ
                       </p>
                       <p className="text-sm text-slate-500">
-                        または
+                        .csv, .xlsx, .xls, .xlsm 対応
                       </p>
                     </div>
                     <Button
@@ -461,7 +487,7 @@ export default function UploadPage() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xls,.xlsm"
                       className="hidden"
                       onChange={handleFileSelect}
                     />

@@ -132,98 +132,17 @@ export default function CallPage() {
         const companies = Array.isArray(companiesData) ? companiesData : []
         const foundCompany = companies.find((c) => c.id === companyId)
         if (!foundCompany) {
-          // モックデータにフォールバック（デモ用）
-          if (companyId.startsWith('demo-company-')) {
-            const mockCompany: Company = {
-              id: companyId,
-              client_id: clientId,
-              name: companyId === 'demo-company-1' ? 'サンプル株式会社'
-                : companyId === 'demo-company-2' ? 'テスト工業株式会社'
-                : 'デモ商事株式会社',
-              industry: companyId === 'demo-company-1' ? 'IT'
-                : companyId === 'demo-company-2' ? '製造業'
-                : '卸売業',
-              employees: companyId === 'demo-company-1' ? 150
-                : companyId === 'demo-company-2' ? 500
-                : 80,
-              location: companyId === 'demo-company-1' ? '東京都渋谷区'
-                : companyId === 'demo-company-2' ? '大阪府大阪市'
-                : '神奈川県横浜市',
-              phone: companyId === 'demo-company-1' ? '03-1234-5678'
-                : companyId === 'demo-company-2' ? '06-9876-5432'
-                : '045-1111-2222',
-              website: 'https://example.com',
-              rank: companyId === 'demo-company-1' ? 'S'
-                : companyId === 'demo-company-2' ? 'A'
-                : 'B',
-              status: '未架電',
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            }
-            setCompany(mockCompany)
-          } else {
-            setError('企業が見つかりません')
-          }
+          setError('企業が見つかりません')
         } else {
           setCompany(foundCompany)
         }
 
-        // クライアントデータもフォールバック
         if (clientData) {
           setClient(clientData)
-        } else if (clientId.startsWith('demo-client-')) {
-          setClient({
-            id: clientId,
-            name: 'デモクライアント（不動産会社A）',
-            industry: '不動産',
-            contact_email: 'demo@example.com',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          })
         }
       } catch (err) {
         console.error('Failed to fetch data:', err)
-        // エラー時はモックデータを使用（デモ用）
-        if (companyId.startsWith('demo-company-')) {
-          const mockCompany: Company = {
-            id: companyId,
-            client_id: clientId,
-            name: companyId === 'demo-company-1' ? 'サンプル株式会社'
-              : companyId === 'demo-company-2' ? 'テスト工業株式会社'
-              : 'デモ商事株式会社',
-            industry: companyId === 'demo-company-1' ? 'IT'
-              : companyId === 'demo-company-2' ? '製造業'
-              : '卸売業',
-            employees: companyId === 'demo-company-1' ? 150
-              : companyId === 'demo-company-2' ? 500
-              : 80,
-            location: companyId === 'demo-company-1' ? '東京都渋谷区'
-              : companyId === 'demo-company-2' ? '大阪府大阪市'
-              : '神奈川県横浜市',
-            phone: companyId === 'demo-company-1' ? '03-1234-5678'
-              : companyId === 'demo-company-2' ? '06-9876-5432'
-              : '045-1111-2222',
-            website: 'https://example.com',
-            rank: companyId === 'demo-company-1' ? 'S'
-              : companyId === 'demo-company-2' ? 'A'
-              : 'B',
-            status: '未架電',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          }
-          setCompany(mockCompany)
-
-          setClient({
-            id: clientId,
-            name: 'デモクライアント（不動産会社A）',
-            industry: '不動産',
-            contact_email: 'demo@example.com',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          })
-        } else {
-          setError(err instanceof Error ? err.message : 'データの取得に失敗しました')
-        }
+        setError(err instanceof Error ? err.message : 'データの取得に失敗しました')
       } finally {
         setIsLoading(false)
       }
@@ -403,7 +322,7 @@ export default function CallPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   if (authLoading || isLoading) {

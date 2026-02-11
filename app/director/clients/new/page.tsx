@@ -90,7 +90,7 @@ export default function NewClientPage() {
 
       // 成功後、少し待ってから一覧画面へ遷移
       setTimeout(() => {
-        router.push('/director/clients')
+        router.replace('/director/clients')
       }, 1500)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました')
@@ -101,7 +101,7 @@ export default function NewClientPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   if (authLoading || !isDirector) {

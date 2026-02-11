@@ -112,79 +112,15 @@ export default function CallListPage() {
           getProducts(),
         ])
 
-        // クライアントデータがあればそれを使用、なければモックデータ
-        if (clientsData.length > 0) {
-          setClients(clientsData)
-          if (!selectedClientId) {
-            setSelectedClientId(clientsData[0].id)
-          }
-        } else {
-          // モッククライアントデータ
-          const mockClients: Client[] = [
-            {
-              id: 'demo-client-1',
-              name: 'デモクライアント（不動産会社A）',
-              industry: '不動産',
-              contact_email: 'demo@example.com',
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-          ]
-          setClients(mockClients)
-          if (!selectedClientId) {
-            setSelectedClientId(mockClients[0].id)
-          }
+        setClients(clientsData)
+        if (clientsData.length > 0 && !selectedClientId) {
+          setSelectedClientId(clientsData[0].id)
         }
 
-        setProducts(productsData.length > 0 ? productsData : [])
+        setProducts(productsData)
       } catch (err) {
         console.error('Failed to fetch data:', err)
-        // モッククライアントデータをフォールバック
-        const mockClients: Client[] = [
-          {
-            id: 'demo-client-1',
-            name: 'デモクライアント（不動産会社A）',
-            industry: '不動産',
-            contact_email: 'demo@example.com',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-        ]
-        setClients(mockClients)
-        if (!selectedClientId) {
-          setSelectedClientId(mockClients[0].id)
-        }
-        // モックデータ
-        setProducts([
-          {
-            id: 'product-1',
-            client_id: 'client-1',
-            name: 'オフィス移転コンサルティング',
-            description: '企業のオフィス移転を総合的にサポート',
-            targetIndustries: ['IT', '金融', 'コンサルティング'],
-            targetEmployeeRange: { min: 50, max: 500 },
-            targetLocations: ['東京都', '神奈川県'],
-            keywords: ['オフィス移転', '事業拡大'],
-            benefits: ['コスト削減', '従業員満足度向上'],
-            idealCustomerProfile: '成長中のIT企業',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 'product-2',
-            client_id: 'client-1',
-            name: '不動産投資アドバイザリー',
-            description: '法人向け不動産投資の戦略立案',
-            targetIndustries: ['金融', '製造業'],
-            targetEmployeeRange: { min: 100, max: 10000 },
-            targetLocations: ['東京都', '大阪府'],
-            keywords: ['資産運用', '不動産投資'],
-            benefits: ['資産形成', '節税効果'],
-            idealCustomerProfile: '余剰資金のある中堅企業',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-        ])
+        setError('データの取得に失敗しました')
       }
     }
     fetchData()
@@ -205,103 +141,11 @@ export default function CallListPage() {
           search: searchQuery || undefined,
         })
 
-        // データがあればそれを使用、なければモックデータ
-        if (data.length > 0) {
-          setCompanies(data)
-        } else {
-          // モック企業データ（デモ用）
-          const mockCompanies: CompanyWithAnalysis[] = [
-            {
-              id: 'demo-company-1',
-              client_id: selectedClientId,
-              name: 'サンプル株式会社',
-              industry: 'IT',
-              employees: 150,
-              location: '東京都渋谷区',
-              phone: '03-1234-5678',
-              website: 'https://example.com',
-              rank: 'S',
-              status: '未架電',
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-            {
-              id: 'demo-company-2',
-              client_id: selectedClientId,
-              name: 'テスト工業株式会社',
-              industry: '製造業',
-              employees: 500,
-              location: '大阪府大阪市',
-              phone: '06-9876-5432',
-              website: 'https://test-kogyo.example.com',
-              rank: 'A',
-              status: '未架電',
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-            {
-              id: 'demo-company-3',
-              client_id: selectedClientId,
-              name: 'デモ商事株式会社',
-              industry: '卸売業',
-              employees: 80,
-              location: '神奈川県横浜市',
-              phone: '045-1111-2222',
-              rank: 'B',
-              status: '未架電',
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-          ]
-          setCompanies(mockCompanies)
-        }
+        setCompanies(data)
       } catch (err) {
         console.error('Failed to fetch companies:', err)
-        // エラー時もモックデータを表示（デモ用）
-        const mockCompanies: CompanyWithAnalysis[] = [
-          {
-            id: 'demo-company-1',
-            client_id: selectedClientId,
-            name: 'サンプル株式会社',
-            industry: 'IT',
-            employees: 150,
-            location: '東京都渋谷区',
-            phone: '03-1234-5678',
-            website: 'https://example.com',
-            rank: 'S',
-            status: '未架電',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 'demo-company-2',
-            client_id: selectedClientId,
-            name: 'テスト工業株式会社',
-            industry: '製造業',
-            employees: 500,
-            location: '大阪府大阪市',
-            phone: '06-9876-5432',
-            rank: 'A',
-            status: '未架電',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 'demo-company-3',
-            client_id: selectedClientId,
-            name: 'デモ商事株式会社',
-            industry: '卸売業',
-            employees: 80,
-            location: '神奈川県横浜市',
-            phone: '045-1111-2222',
-            rank: 'B',
-            status: '未架電',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-        ]
-        setCompanies(mockCompanies)
-        setError(null) // モックデータ表示時はエラーをクリア
+        setError('企業データの取得に失敗しました')
+        setCompanies([])
       } finally {
         setIsLoading(false)
       }
@@ -529,7 +373,7 @@ export default function CallListPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   if (authLoading) {
@@ -643,13 +487,13 @@ export default function CallListPage() {
                 </div>
               </div>
               <div className="flex-1 max-w-sm">
-                <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                <Select value={selectedProductId || 'none'} onValueChange={(v) => setSelectedProductId(v === 'none' ? '' : v)}>
                   <SelectTrigger className="bg-white dark:bg-slate-900">
                     <Package className="h-4 w-4 mr-2 text-purple-600" />
                     <SelectValue placeholder="商材を選択..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">選択なし</SelectItem>
+                    <SelectItem value="none">選択なし</SelectItem>
                     {products.map((product: Product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}

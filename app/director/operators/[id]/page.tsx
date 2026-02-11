@@ -48,7 +48,7 @@ export default function OperatorDetailPage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -75,7 +75,7 @@ export default function OperatorDetailPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   // 統計計算

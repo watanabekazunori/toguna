@@ -96,7 +96,7 @@ export default function NewProductPage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -106,18 +106,7 @@ export default function NewProductPage() {
         const data = await getClients()
         setClients(data)
       } catch {
-        // モックデータ
-        setClients([
-          {
-            id: 'client-1',
-            name: 'サンプルクライアント1',
-            contact_person: '山田太郎',
-            email: 'yamada@example.com',
-            phone: '03-1234-5678',
-            address: '東京都渋谷区',
-            created_at: '2026-01-01T00:00:00Z',
-          },
-        ])
+        console.error('Failed to fetch clients')
       }
     }
     fetchClients()
@@ -125,7 +114,7 @@ export default function NewProductPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const handleAddKeyword = () => {
@@ -228,12 +217,9 @@ export default function NewProductPage() {
       }
 
       await createProduct(productData)
-      router.push('/director/products')
-    } catch {
-      // モック成功
-      setTimeout(() => {
-        router.push('/director/products')
-      }, 500)
+      router.replace('/director/products')
+    } catch (err) {
+      console.error('Failed to create product:', err)
     }
   }
 

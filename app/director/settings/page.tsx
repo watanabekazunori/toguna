@@ -70,7 +70,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -117,7 +117,7 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   const handleSave = async () => {

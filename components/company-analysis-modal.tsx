@@ -31,6 +31,13 @@ import {
   DollarSign,
   Award,
   Zap,
+  Database,
+  Globe,
+  Mail,
+  Phone,
+  Calendar,
+  BadgeCheck,
+  TrendingUp as TrendUp,
 } from 'lucide-react'
 import type {
   Company,
@@ -119,6 +126,19 @@ const getBuyingStageBadge = (stage: IntentAnalysis['buyingStage']) => {
   return <Badge className={`${s.color} text-white`}>{s.label}</Badge>
 }
 
+// 金額をフォーマット（円単位 → 万円/億円表示）
+const formatCurrency = (value: string): string => {
+  if (!value) return '-'
+  const num = parseInt(value.replace(/[^0-9]/g, ''), 10)
+  if (isNaN(num)) return value
+  if (num >= 100000000) {
+    return `${(num / 100000000).toFixed(1)}億円`
+  } else if (num >= 10000) {
+    return `${(num / 10000).toFixed(0)}万円`
+  }
+  return `${num.toLocaleString()}円`
+}
+
 export function CompanyAnalysisModal({
   open,
   onOpenChange,
@@ -175,7 +195,7 @@ export function CompanyAnalysisModal({
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="intent" className="flex items-center gap-2">
                 <Flame className="h-4 w-4" />
                 インテント
@@ -183,6 +203,10 @@ export function CompanyAnalysisModal({
               <TabsTrigger value="analysis" className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
                 企業分析
+              </TabsTrigger>
+              <TabsTrigger value="salesradar" className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                詳細データ
               </TabsTrigger>
               <TabsTrigger value="approach" className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
@@ -432,6 +456,181 @@ export function CompanyAnalysisModal({
                   </ul>
                 </Card>
               </div>
+            </TabsContent>
+
+            {/* SalesRadar詳細データタブ */}
+            <TabsContent value="salesradar" className="space-y-4 mt-4">
+              {company.salesradar_data ? (
+                <>
+                  {/* 基本情報 */}
+                  <Card className="p-4">
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-blue-600" />
+                      基本情報
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                      {(company.salesradar_data as Record<string, string>)['法人番号'] && (
+                        <div>
+                          <span className="text-slate-500">法人番号</span>
+                          <p className="font-medium">{(company.salesradar_data as Record<string, string>)['法人番号']}</p>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['代表者名'] && (
+                        <div>
+                          <span className="text-slate-500">代表者</span>
+                          <p className="font-medium">{(company.salesradar_data as Record<string, string>)['代表者名']}</p>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['設立年月日'] && (
+                        <div className="flex items-start gap-1">
+                          <Calendar className="h-4 w-4 text-slate-400 mt-0.5" />
+                          <div>
+                            <span className="text-slate-500">設立</span>
+                            <p className="font-medium">{(company.salesradar_data as Record<string, string>)['設立年月日']}</p>
+                          </div>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['上場区分'] && (
+                        <div className="flex items-start gap-1">
+                          <BadgeCheck className="h-4 w-4 text-slate-400 mt-0.5" />
+                          <div>
+                            <span className="text-slate-500">上場区分</span>
+                            <p className="font-medium">{(company.salesradar_data as Record<string, string>)['上場区分']}</p>
+                          </div>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['法人グレード'] && (
+                        <div>
+                          <span className="text-slate-500">法人グレード</span>
+                          <Badge className={
+                            (company.salesradar_data as Record<string, string>)['法人グレード'] === 'A' ? 'bg-green-500 text-white' :
+                            (company.salesradar_data as Record<string, string>)['法人グレード'] === 'B' ? 'bg-blue-500 text-white' :
+                            'bg-slate-400 text-white'
+                          }>
+                            {(company.salesradar_data as Record<string, string>)['法人グレード']}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* 財務情報 */}
+                  <Card className="p-4">
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-green-600" />
+                      財務情報
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                      {(company.salesradar_data as Record<string, string>)['売上高(円)'] && (
+                        <div>
+                          <span className="text-slate-500">売上高</span>
+                          <p className="font-medium text-green-600">
+                            {formatCurrency((company.salesradar_data as Record<string, string>)['売上高(円)'])}
+                          </p>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['資本金(円)'] && (
+                        <div>
+                          <span className="text-slate-500">資本金</span>
+                          <p className="font-medium">
+                            {formatCurrency((company.salesradar_data as Record<string, string>)['資本金(円)'])}
+                          </p>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['従業員数(人)'] && (
+                        <div className="flex items-start gap-1">
+                          <Users className="h-4 w-4 text-slate-400 mt-0.5" />
+                          <div>
+                            <span className="text-slate-500">従業員数</span>
+                            <p className="font-medium">{(company.salesradar_data as Record<string, string>)['従業員数(人)']}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* 連絡先情報 */}
+                  <Card className="p-4">
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-purple-600" />
+                      連絡先
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      {(company.salesradar_data as Record<string, string>)['電話番号'] && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-slate-400" />
+                          <span>{(company.salesradar_data as Record<string, string>)['電話番号']}</span>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['メールアドレス'] && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-slate-400" />
+                          <span>{(company.salesradar_data as Record<string, string>)['メールアドレス']}</span>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['サイトURL'] && (
+                        <div className="flex items-center gap-2 col-span-2">
+                          <Globe className="h-4 w-4 text-slate-400" />
+                          <a
+                            href={(company.salesradar_data as Record<string, string>)['サイトURL']}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline truncate"
+                          >
+                            {(company.salesradar_data as Record<string, string>)['サイトURL']}
+                          </a>
+                        </div>
+                      )}
+                      {(company.salesradar_data as Record<string, string>)['本社所在地(WEBサイト掲載)'] && (
+                        <div className="col-span-2">
+                          <span className="text-slate-500">所在地</span>
+                          <p className="font-medium">{(company.salesradar_data as Record<string, string>)['本社所在地(WEBサイト掲載)']}</p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* 法人サマリー */}
+                  {(company.salesradar_data as Record<string, string>)['法人サマリー'] && (
+                    <Card className="p-4 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Lightbulb className="h-4 w-4 text-blue-600" />
+                        法人サマリー
+                      </h4>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        {(company.salesradar_data as Record<string, string>)['法人サマリー']}
+                      </p>
+                    </Card>
+                  )}
+
+                  {/* 全データ（折りたたみ） */}
+                  <Card className="p-4">
+                    <details>
+                      <summary className="cursor-pointer font-medium text-sm text-slate-600 hover:text-slate-800">
+                        全データを表示 ({Object.keys(company.salesradar_data as Record<string, string>).length}項目)
+                      </summary>
+                      <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+                        {Object.entries(company.salesradar_data as Record<string, string>)
+                          .filter(([, value]) => value && value !== '')
+                          .map(([key, value]) => (
+                            <div key={key} className="grid grid-cols-3 gap-2 text-xs border-b border-slate-100 dark:border-slate-800 pb-1">
+                              <span className="text-slate-500 truncate" title={key}>{key}</span>
+                              <span className="col-span-2 text-slate-700 dark:text-slate-300 break-words">{value}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </details>
+                  </Card>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <Database className="h-16 w-16 text-slate-300" />
+                  <p className="text-slate-600">SalesRadarデータがありません</p>
+                  <p className="text-sm text-slate-400">
+                    SalesRadar形式のExcel/CSVからインポートすると表示されます
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             {/* アプローチ戦略タブ */}

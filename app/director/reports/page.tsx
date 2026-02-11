@@ -59,40 +59,6 @@ import { FileSpreadsheet, FileText } from 'lucide-react'
 
 type PeriodOption = '今日' | '今週' | '今月' | '全期間'
 
-// デモ用データ生成
-const generateDailyData = (): DailyCallData[] => {
-  const data: DailyCallData[] = []
-  const today = new Date()
-  for (let i = 13; i >= 0; i--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
-    const calls = Math.floor(Math.random() * 80) + 100
-    const connections = Math.floor(calls * (0.3 + Math.random() * 0.2))
-    const appointments = Math.floor(connections * (0.05 + Math.random() * 0.1))
-    data.push({
-      date: `${date.getMonth() + 1}/${date.getDate()}`,
-      calls,
-      connections,
-      appointments,
-    })
-  }
-  return data
-}
-
-const generateOperatorData = (): OperatorData[] => {
-  const names = ['田中', '鈴木', '佐藤', '山田', '伊藤']
-  return names.map((name) => {
-    const calls = Math.floor(Math.random() * 50) + 30
-    const appointments = Math.floor(Math.random() * 5) + 1
-    return {
-      name,
-      calls,
-      appointments,
-      rate: (appointments / calls) * 100,
-    }
-  })
-}
-
 export default function ReportsPage() {
   const { user, signOut, isDirector, isLoading: authLoading } = useAuth()
   const router = useRouter()
@@ -101,12 +67,12 @@ export default function ReportsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodOption>('今週')
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
-  const [dailyData] = useState<DailyCallData[]>(generateDailyData)
-  const [operatorData] = useState<OperatorData[]>(generateOperatorData)
+  const [dailyData, setDailyData] = useState<DailyCallData[]>([])
+  const [operatorData, setOperatorData] = useState<OperatorData[]>([])
 
   useEffect(() => {
     if (!authLoading && !isDirector) {
-      router.push('/')
+      router.replace('/')
     }
   }, [authLoading, isDirector, router])
 
@@ -119,6 +85,31 @@ export default function ReportsPage() {
         ])
         setClients(clientsData)
         setCallLogs(logsData)
+
+        // 日別データを実データから生成
+        const dailyMap = new Map<string, DailyCallData>()
+        logsData.forEach((log) => {
+          const date = new Date(log.created_at)
+          const dateKey = `${date.getMonth() + 1}/${date.getDate()}`
+          const existing = dailyMap.get(dateKey) || { date: dateKey, calls: 0, connections: 0, appointments: 0 }
+          existing.calls++
+          if (log.result === '接続') existing.connections++
+          if (log.result === 'アポ獲得') existing.appointments++
+          dailyMap.set(dateKey, existing)
+        })
+        setDailyData(Array.from(dailyMap.values()).slice(-14))
+
+        // オペレーター別データを実データから生成（TODO: 本来はoperatorsテーブルと結合）
+        const operatorMap = new Map<string, OperatorData>()
+        logsData.forEach((log) => {
+          const name = log.operator_id || '不明'
+          const existing = operatorMap.get(name) || { name, calls: 0, appointments: 0, rate: 0 }
+          existing.calls++
+          if (log.result === 'アポ獲得') existing.appointments++
+          existing.rate = existing.calls > 0 ? (existing.appointments / existing.calls) * 100 : 0
+          operatorMap.set(name, existing)
+        })
+        setOperatorData(Array.from(operatorMap.values()))
       } catch (err) {
         console.error('Failed to fetch data:', err)
       } finally {
@@ -133,7 +124,7 @@ export default function ReportsPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/login')
+    router.replace('/login')
   }
 
   // エクスポート処理
@@ -213,10 +204,10 @@ export default function ReportsPage() {
 
   // 円グラフ用データ
   const pieData: ResultData[] = [
-    { name: 'アポ獲得', value: stats.appointments || 12, color: '#10b981' },
-    { name: '接続', value: stats.connections || 45, color: '#3b82f6' },
-    { name: '不在', value: stats.notReached || 89, color: '#f59e0b' },
-    { name: '断り/NG', value: stats.rejected || 34, color: '#ef4444' },
+    { name: 'アポ獲得', value: stats.appointments, color: '#10b981' },
+    { name: '接続', value: stats.connections, color: '#3b82f6' },
+    { name: '不在', value: stats.notReached, color: '#f59e0b' },
+    { name: '断り/NG', value: stats.rejected, color: '#ef4444' },
   ]
 
   if (authLoading || !isDirector) {
@@ -357,7 +348,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">総架電数</p>
-                    <p className="text-2xl font-bold">{stats.totalCalls || 180}</p>
+                    <p className="text-2xl font-bold">{stats.totalCalls}</p>
                   </div>
                 </div>
               </Card>
@@ -369,7 +360,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">アポ獲得</p>
-                    <p className="text-2xl font-bold text-green-600">{stats.appointments || 12}</p>
+                    <p className="text-2xl font-bold text-green-600">{stats.appointments}</p>
                   </div>
                 </div>
               </Card>
@@ -381,7 +372,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">アポ率</p>
-                    <p className="text-2xl font-bold text-purple-600">{appointmentRate || '6.7'}%</p>
+                    <p className="text-2xl font-bold text-purple-600">{appointmentRate}%</p>
                   </div>
                 </div>
               </Card>
@@ -393,7 +384,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">接続数</p>
-                    <p className="text-2xl font-bold">{stats.connections || 45}</p>
+                    <p className="text-2xl font-bold">{stats.connections}</p>
                   </div>
                 </div>
               </Card>
@@ -405,7 +396,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">接続率</p>
-                    <p className="text-2xl font-bold">{connectionRate || '25.0'}%</p>
+                    <p className="text-2xl font-bold">{connectionRate}%</p>
                   </div>
                 </div>
               </Card>
@@ -435,77 +426,61 @@ export default function ReportsPage() {
             {/* Key Metrics */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <Card className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200 dark:border-green-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Target className="h-10 w-10 text-green-600" />
-                    <div>
-                      <p className="text-sm text-slate-500">アポ獲得率</p>
-                      <p className="text-4xl font-bold text-green-600">{appointmentRate || '6.7'}%</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-green-600 bg-green-100 dark:bg-green-900/50 px-3 py-1 rounded-full">
-                    <TrendingUp className="h-4 w-4" />
-                    <span className="font-medium text-sm">+2.3%</span>
+                <div className="flex items-center gap-3">
+                  <Target className="h-10 w-10 text-green-600" />
+                  <div>
+                    <p className="text-sm text-slate-500">アポ獲得率</p>
+                    <p className="text-4xl font-bold text-green-600">{appointmentRate}%</p>
                   </div>
                 </div>
               </Card>
 
               <Card className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border-blue-200 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Phone className="h-10 w-10 text-blue-600" />
-                    <div>
-                      <p className="text-sm text-slate-500">接続率</p>
-                      <p className="text-4xl font-bold text-blue-600">{connectionRate || '25.0'}%</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-3 py-1 rounded-full">
-                    <TrendingUp className="h-4 w-4" />
-                    <span className="font-medium text-sm">+5.1%</span>
+                <div className="flex items-center gap-3">
+                  <Phone className="h-10 w-10 text-blue-600" />
+                  <div>
+                    <p className="text-sm text-slate-500">接続率</p>
+                    <p className="text-4xl font-bold text-blue-600">{connectionRate}%</p>
                   </div>
                 </div>
               </Card>
 
               <Card className="p-6 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Clock className="h-10 w-10 text-amber-600" />
-                    <div>
-                      <p className="text-sm text-slate-500">平均通話時間</p>
-                      <p className="text-4xl font-bold text-amber-600">2:45</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-red-500 bg-red-100 dark:bg-red-900/50 px-3 py-1 rounded-full">
-                    <TrendingDown className="h-4 w-4" />
-                    <span className="font-medium text-sm">-0:15</span>
+                <div className="flex items-center gap-3">
+                  <Clock className="h-10 w-10 text-amber-600" />
+                  <div>
+                    <p className="text-sm text-slate-500">総架電数</p>
+                    <p className="text-4xl font-bold text-amber-600">{stats.totalCalls}</p>
                   </div>
                 </div>
               </Card>
             </div>
 
             {/* Insights */}
-            <Card className="p-6 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-200 dark:border-purple-800">
-              <h3 className="font-bold text-lg mb-4 text-purple-800 dark:text-purple-200">
-                📊 AIインサイト
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    <strong className="text-green-600">Good:</strong> S判定企業のアポ率は平均の2倍です
-                  </p>
+            {stats.totalCalls > 0 && (
+              <Card className="p-6 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-200 dark:border-purple-800">
+                <h3 className="font-bold text-lg mb-4 text-purple-800 dark:text-purple-200">
+                  📊 サマリー
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      <strong className="text-green-600">アポ獲得:</strong> {stats.appointments}件
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      <strong className="text-blue-600">接続:</strong> {stats.connections}件
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      <strong className="text-amber-600">不在/断り:</strong> {stats.notReached + stats.rejected}件
+                    </p>
+                  </div>
                 </div>
-                <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    <strong className="text-amber-600">Alert:</strong> 火曜日の接続率が他の曜日より10%低い傾向
-                  </p>
-                </div>
-                <div className="p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    <strong className="text-blue-600">Tip:</strong> 10時台の架電が最も効果的です
-                  </p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            )}
           </>
         )}
       </main>
