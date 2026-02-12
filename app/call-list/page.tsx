@@ -9,13 +9,17 @@ import {
   getClients,
   getProducts,
   runFullAnalysis,
+  deleteCompany,
   type Company,
   type Client,
   type Product,
   type FullAnalysisResult,
   type ProductMatchResult,
 } from '@/lib/api'
+import { getProjects, type Project } from '@/lib/projects-api'
 import { CompanyAnalysisModal } from '@/components/company-analysis-modal'
+import { ErrorAlert } from '@/components/error-alert'
+import { ResponsiveTable } from '@/components/responsive-table'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -47,6 +51,8 @@ import {
   Package,
   Target,
   Sparkles,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react'
 
 type SortOption = 'rank' | 'name' | 'employees' | 'intent' | 'match'
@@ -83,7 +89,9 @@ export default function CallListPage() {
   const [companies, setCompanies] = useState<CompanyWithAnalysis[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [selectedProductId, setSelectedProductId] = useState<string>('')
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,6 +99,11 @@ export default function CallListPage() {
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithAnalysis | null>(null)
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
+
+  // 削除確認用
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [companyToDelete, setCompanyToDelete] = useState<CompanyWithAnalysis | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Filters
   const [selectedClientId, setSelectedClientId] = useState<string>(searchParams.get('client_id') || '')
@@ -103,56 +116,61 @@ export default function CallListPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  // Fetch clients and products on mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [clientsData, productsData] = await Promise.all([
-          getClients(),
-          getProducts(),
-        ])
+  // Fetch clients, products, and projects on mount
+  const fetchInitialData = async () => {
+    try {
+      setError(null)
+      const [clientsData, productsData, projectsData] = await Promise.all([
+        getClients(),
+        getProducts(),
+        getProjects(),
+      ])
 
-        setClients(clientsData)
-        if (clientsData.length > 0 && !selectedClientId) {
-          setSelectedClientId(clientsData[0].id)
-        }
-
-        setProducts(productsData)
-      } catch (err) {
-        console.error('Failed to fetch data:', err)
-        setError('データの取得に失敗しました')
+      setClients(clientsData)
+      if (clientsData.length > 0 && !selectedClientId) {
+        setSelectedClientId(clientsData[0].id)
       }
+
+      setProducts(productsData)
+      setProjects(projectsData)
+    } catch (err) {
+      console.error('Failed to fetch data:', err)
+      setError('データの取得に失敗しました。ネットワーク接続を確認してください。')
     }
-    fetchData()
+  }
+
+  useEffect(() => {
+    fetchInitialData()
   }, [])
 
-  // Fetch companies when client or rank changes
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      if (!selectedClientId) return
+  // Fetch companies when client, rank, or project changes
+  const fetchCompanies = async () => {
+    if (!selectedClientId) return
 
-      setIsLoading(true)
-      setError(null)
+    setIsLoading(true)
+    setError(null)
 
-      try {
-        const data = await getCompanies({
-          client_id: selectedClientId,
-          rank: rankFilter !== '全て' ? rankFilter.replace('判定', '') : undefined,
-          search: searchQuery || undefined,
-        })
+    try {
+      const data = await getCompanies({
+        client_id: selectedClientId,
+        rank: rankFilter !== '全て' ? rankFilter.replace('判定', '') : undefined,
+        search: searchQuery || undefined,
+        project_id: selectedProjectId || undefined,
+      })
 
-        setCompanies(data)
-      } catch (err) {
-        console.error('Failed to fetch companies:', err)
-        setError('企業データの取得に失敗しました')
-        setCompanies([])
-      } finally {
-        setIsLoading(false)
-      }
+      setCompanies(data)
+    } catch (err) {
+      console.error('Failed to fetch companies:', err)
+      setError('企業データの取得に失敗しました。ネットワーク接続を確認してください。')
+      setCompanies([])
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchCompanies()
-  }, [selectedClientId, rankFilter])
+  }, [selectedClientId, rankFilter, selectedProjectId])
 
   // 商材選択時にマッチングスコアを計算
   useEffect(() => {
@@ -376,6 +394,34 @@ export default function CallListPage() {
     router.replace('/login')
   }
 
+  // 企業削除ハンドラー
+  const handleDeleteCompany = async (company: CompanyWithAnalysis) => {
+    setCompanyToDelete(company)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!companyToDelete) return
+
+    setIsDeleting(true)
+    try {
+      const success = await deleteCompany(companyToDelete.id)
+      if (success) {
+        // リストから削除
+        setCompanies((prev) => prev.filter((c) => c.id !== companyToDelete.id))
+        setDeleteConfirmOpen(false)
+        setCompanyToDelete(null)
+      } else {
+        setError('企業の削除に失敗しました')
+      }
+    } catch (err) {
+      console.error('Delete failed:', err)
+      setError('企業の削除中にエラーが発生しました')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
@@ -464,9 +510,10 @@ export default function CallListPage() {
 
         {/* Error Message */}
         {error && (
-          <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
-            <p className="text-red-600 dark:text-red-400">{error}</p>
-          </Card>
+          <ErrorAlert
+            message={error}
+            onRetry={() => fetchInitialData()}
+          />
         )}
 
         {/* Product Matching Section */}
@@ -555,6 +602,21 @@ export default function CallListPage() {
                       <SelectItem value="A判定">A判定</SelectItem>
                       <SelectItem value="B判定">B判定</SelectItem>
                       <SelectItem value="C判定">C判定</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-48">
+                  <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="プロジェクト" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">全て</SelectItem>
+                      {projects.map((project: Project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -790,6 +852,15 @@ export default function CallListPage() {
                         <Phone className="h-4 w-4 mr-2" />
                         架電する
                       </Button>
+                      {/* 削除ボタン */}
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                        onClick={() => handleDeleteCompany(company)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -871,6 +942,64 @@ export default function CallListPage() {
             }
           }}
         />
+
+        {/* 削除確認ダイアログ */}
+        {deleteConfirmOpen && companyToDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="max-w-md w-full mx-4 p-6 bg-white dark:bg-slate-900">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 mb-2">
+                    企業を削除しますか？
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                    この企業を削除します。関連する架電履歴は保持されます。この操作は取り消せません。
+                  </p>
+                  <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded mb-4">
+                    <p className="font-medium text-slate-900 dark:text-slate-100">{companyToDelete.name}</p>
+                    {companyToDelete.phone && (
+                      <p className="text-sm text-slate-600 dark:text-slate-400">{companyToDelete.phone}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteConfirmOpen(false)
+                    setCompanyToDelete(null)
+                  }}
+                  disabled={isDeleting}
+                  className="flex-1"
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      削除中...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      削除
+                    </>
+                  )}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
       </main>
     </div>
   )

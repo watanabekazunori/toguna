@@ -44,53 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { Product, getProducts, deleteProduct, getMatchingCompanies, ProductMatchResult, ProductMatchSummary } from '@/lib/api'
 
-// モックデータ（API未実装時用）
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    client_id: 'client-1',
-    name: 'オフィス移転コンサルティング',
-    description: '企業のオフィス移転を総合的にサポート。物件選定から内装設計、引越し手配まで一括対応。',
-    targetIndustries: ['IT', '金融', 'コンサルティング', '広告'],
-    targetEmployeeRange: { min: 50, max: 500 },
-    targetRevenue: { min: 10, max: 100 },
-    targetLocations: ['東京都', '神奈川県', '大阪府'],
-    keywords: ['オフィス移転', '事業拡大', '人員増加', 'リモートワーク'],
-    benefits: ['コスト削減', '従業員満足度向上', '業務効率化'],
-    idealCustomerProfile: '成長中のIT企業で、従業員数が増加しており、現在のオフィスが手狭になっている企業',
-    created_at: '2026-01-10T00:00:00Z',
-    updated_at: '2026-01-10T00:00:00Z',
-  },
-  {
-    id: '2',
-    client_id: 'client-1',
-    name: '不動産投資アドバイザリー',
-    description: '法人向け不動産投資の戦略立案から物件選定、運用管理までをサポート。',
-    targetIndustries: ['金融', '保険', '製造業', '商社'],
-    targetEmployeeRange: { min: 100, max: 10000 },
-    targetRevenue: { min: 50, max: 1000 },
-    targetLocations: ['東京都', '愛知県', '大阪府', '福岡県'],
-    keywords: ['資産運用', '不動産投資', '節税', '事業承継'],
-    benefits: ['資産形成', '節税効果', '安定収入'],
-    idealCustomerProfile: '余剰資金があり、不動産投資による資産形成を検討している中堅〜大企業',
-    created_at: '2026-01-08T00:00:00Z',
-    updated_at: '2026-01-12T00:00:00Z',
-  },
-  {
-    id: '3',
-    client_id: 'client-2',
-    name: 'シェアオフィス・サテライトオフィス',
-    description: '柔軟な契約形態のシェアオフィス。スタートアップから大企業のサテライト拠点まで対応。',
-    targetIndustries: ['IT', 'スタートアップ', 'コンサルティング', 'クリエイティブ'],
-    targetEmployeeRange: { min: 1, max: 50 },
-    targetLocations: ['東京都', '神奈川県', '千葉県', '埼玉県'],
-    keywords: ['シェアオフィス', 'コワーキング', 'サテライト', 'リモートワーク'],
-    benefits: ['初期費用削減', '柔軟な契約', 'ネットワーキング'],
-    idealCustomerProfile: '設立間もないスタートアップや、リモートワーク推進のための拠点を探している企業',
-    created_at: '2026-01-05T00:00:00Z',
-    updated_at: '2026-01-05T00:00:00Z',
-  },
-]
+// フォールバック用の空配列（APIが実データを返す）
 
 export default function ProductsPage() {
   const { user, signOut, isDirector, isLoading: authLoading } = useAuth()
@@ -116,16 +70,12 @@ export default function ProductsPage() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        // const data = await getProducts()
-        // setProducts(data)
-        // モックデータを使用
-        setTimeout(() => {
-          setProducts(mockProducts)
-          setIsLoading(false)
-        }, 500)
-      } catch {
-        // APIエラー時はモックデータを使用
-        setProducts(mockProducts)
+        const data = await getProducts()
+        setProducts(data)
+      } catch (err) {
+        console.error('Failed to fetch products:', err)
+        setProducts([])
+      } finally {
         setIsLoading(false)
       }
     }
@@ -142,9 +92,8 @@ export default function ProductsPage() {
     try {
       await deleteProduct(selectedProduct.id)
       setProducts(products.filter((p) => p.id !== selectedProduct.id))
-    } catch {
-      // モック削除
-      setProducts(products.filter((p) => p.id !== selectedProduct.id))
+    } catch (err) {
+      console.error('Failed to delete product:', err)
     }
     setShowDeleteDialog(false)
     setSelectedProduct(null)
@@ -158,78 +107,11 @@ export default function ProductsPage() {
     try {
       const results = await getMatchingCompanies(product.id, { limit: 10 })
       setMatchResults(results)
-    } catch {
-      // モックマッチング結果
-      setTimeout(() => {
-        setMatchResults({
-          matches: [
-            {
-              company: {
-                id: '1',
-                name: '株式会社テックグロース',
-                industry: 'IT',
-                employees: 120,
-                location: '東京都渋谷区',
-                phone: '03-1234-5678',
-                website: 'https://techgrowth.co.jp',
-                status: '未着手',
-                rank: 'S',
-                client_id: 'client-1',
-                created_at: '2026-01-01T00:00:00Z',
-              },
-              matchScore: 92,
-              matchLevel: 'excellent',
-              matchReasons: [
-                { category: '業界', reason: 'IT業界で成長中の企業', score: 95 },
-                { category: '従業員数', reason: 'ターゲット規模に合致', score: 90 },
-                { category: 'ニーズシグナル', reason: '採用強化の兆候あり', score: 88 },
-              ],
-              recommendedApproach: 'オフィス拡張ニーズを軸に提案',
-              talkingPoints: ['人員増加に伴うスペース不足の解消', 'コスト最適化'],
-              potentialObjections: ['予算', 'タイミング'],
-            },
-            {
-              company: {
-                id: '2',
-                name: 'ファイナンシャルパートナーズ株式会社',
-                industry: '金融',
-                employees: 85,
-                location: '東京都千代田区',
-                phone: '03-9876-5432',
-                website: 'https://financial-partners.co.jp',
-                status: '未着手',
-                rank: 'A',
-                client_id: 'client-1',
-                created_at: '2026-01-02T00:00:00Z',
-              },
-              matchScore: 78,
-              matchLevel: 'good',
-              matchReasons: [
-                { category: '業界', reason: '金融業界ターゲット', score: 85 },
-                { category: '所在地', reason: '東京都内の企業', score: 80 },
-                { category: '事業拡大', reason: '新規事業展開の動き', score: 70 },
-              ],
-              recommendedApproach: 'コスト削減と立地改善を提案',
-              talkingPoints: ['オフィス環境改善', 'アクセス向上'],
-              potentialObjections: ['現状維持志向'],
-            },
-          ],
-          summary: {
-            product: product,
-            totalMatches: 45,
-            excellentMatches: 8,
-            goodMatches: 15,
-            fairMatches: 22,
-            topIndustries: [
-              { industry: 'IT', count: 18 },
-              { industry: '金融', count: 12 },
-              { industry: 'コンサルティング', count: 8 },
-            ],
-            averageMatchScore: 68,
-          },
-        })
-        setIsLoadingMatches(false)
-      }, 1500)
+    } catch (err) {
+      console.error('Failed to find matches:', err)
+      setMatchResults(null)
+    } finally {
+      setIsLoadingMatches(false)
     }
   }
 

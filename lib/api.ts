@@ -52,26 +52,65 @@ export type CSVRow = {
   [key: string]: string
 }
 
-// CSVパース関数
+// CSVパース関数（引用符付きフィールド対応）
 export function parseCSV(content: string): CSVRow[] {
+  // BOMを削除（UTF-8 BOM: U+FEFF）
+  if (content.charCodeAt(0) === 0xFEFF) {
+    content = content.slice(1)
+  }
+
   const lines = content.trim().split('\n')
   if (lines.length < 2) return []
 
-  const headers = lines[0].split(',').map(h => h.trim())
+  // ヘッダーをパース（引用符対応）
+  const headers = parseCSVLine(lines[0])
   const rows: CSVRow[] = []
 
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim())
+    const values = parseCSVLine(lines[i])
     if (values.length !== headers.length) continue
 
     const row: CSVRow = {}
     headers.forEach((header, index) => {
-      row[header] = values[index]
+      row[header] = values[index] || ''
     })
     rows.push(row)
   }
 
   return rows
+}
+
+// CSVの1行をパース（引用符対応）
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let insideQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    const nextChar = line[i + 1]
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        // エスケープされたダブルクォート
+        current += '"'
+        i++ // 次の文字をスキップ
+      } else {
+        // クォートのトグル
+        insideQuotes = !insideQuotes
+      }
+    } else if (char === ',' && !insideQuotes) {
+      // フィールド終了
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  // 最後のフィールドを追加
+  result.push(current.trim())
+  return result
 }
 
 // 従業員数の文字列をパース（SalesRadar形式対応）
@@ -185,21 +224,26 @@ function isExcelFile(file: File): boolean {
   return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.xlsm')
 }
 
-// CSV/Excelアップロード用の関数
+// CSV/Excelアップロード用の関数（Shift-JIS対応）
 export async function uploadCompaniesCSV(formData: FormData): Promise<{
   success: boolean
   imported: number
   errors: string[]
+  skipped: number
+  duplicates: Array<{ name: string; phone: string }>
   companies: Company[]
 }> {
   const file = formData.get('file') as File | null
   const clientId = formData.get('client_id') as string | null
+  const skipDuplicates = (formData.get('skip_duplicates') as string | null) === 'true'
 
   if (!file) {
     return {
       success: false,
       imported: 0,
       errors: ['ファイルが選択されていません'],
+      skipped: 0,
+      duplicates: [],
       companies: [],
     }
   }
@@ -209,6 +253,8 @@ export async function uploadCompaniesCSV(formData: FormData): Promise<{
       success: false,
       imported: 0,
       errors: ['クライアントが選択されていません'],
+      skipped: 0,
+      duplicates: [],
       companies: [],
     }
   }
@@ -220,7 +266,17 @@ export async function uploadCompaniesCSV(formData: FormData): Promise<{
     if (isExcelFile(file)) {
       rows = await parseExcel(file)
     } else {
-      const content = await file.text()
+      // ArrayBufferで読み込んでエンコーディング検出
+      const buffer = await file.arrayBuffer()
+      const uint8 = new Uint8Array(buffer)
+
+      // エンコーディング検出（Shift-JISまたはUTF-8）
+      const encoding = detectEncoding(uint8)
+
+      // デコード
+      const decoder = new TextDecoder(encoding)
+      const content = decoder.decode(uint8)
+
       rows = parseCSV(content)
     }
 
@@ -229,21 +285,120 @@ export async function uploadCompaniesCSV(formData: FormData): Promise<{
         success: false,
         imported: 0,
         errors: ['CSVファイルにデータがありません'],
+        skipped: 0,
+        duplicates: [],
         companies: [],
       }
     }
 
     const companies = csvRowsToCompanies(rows, clientId)
-    const result = await bulkCreateCompanies(companies)
 
-    return result
+    // 重複チェック
+    const { validCompanies, duplicateCompanies, duplicateErrors } = await checkDuplicates(
+      companies,
+      skipDuplicates
+    )
+
+    const result = await bulkCreateCompanies(validCompanies)
+
+    return {
+      ...result,
+      skipped: duplicateCompanies.length,
+      duplicates: duplicateCompanies,
+      errors: [...duplicateErrors, ...result.errors],
+    }
   } catch (error) {
     return {
       success: false,
       imported: 0,
       errors: [error instanceof Error ? error.message : 'CSVの処理中にエラーが発生しました'],
+      skipped: 0,
+      duplicates: [],
       companies: [],
     }
+  }
+}
+
+// エンコーディング検出
+function detectEncoding(uint8: Uint8Array): string {
+  // UTF-8 BOM チェック
+  if (uint8.length >= 3 && uint8[0] === 0xEF && uint8[1] === 0xBB && uint8[2] === 0xBF) {
+    return 'utf-8'
+  }
+
+  // Shift-JIS マルチバイト文字を検出
+  // Shift-JISのリード バイト: 0x81-0x9F, 0xE0-0xEF
+  // トレーリング バイト: 0x40-0x7E, 0x80-0xFC
+  for (let i = 0; i < Math.min(uint8.length - 1, 5000); i++) {
+    const byte1 = uint8[i]
+    if ((byte1 >= 0x81 && byte1 <= 0x9F) || (byte1 >= 0xE0 && byte1 <= 0xEF)) {
+      const byte2 = uint8[i + 1]
+      if ((byte2 >= 0x40 && byte2 <= 0x7E) || (byte2 >= 0x80 && byte2 <= 0xFC)) {
+        // Shift-JIS の2バイト文字パターンマッチ
+        return 'shift-jis'
+      }
+    }
+  }
+
+  // デフォルトはUTF-8
+  return 'utf-8'
+}
+
+// 重複チェック
+async function checkDuplicates(
+  companies: BulkCompanyInput[],
+  skipDuplicates: boolean
+): Promise<{
+  validCompanies: BulkCompanyInput[]
+  duplicateCompanies: Array<{ name: string; phone: string }>
+  duplicateErrors: string[]
+}> {
+  const duplicateCompanies: Array<{ name: string; phone: string }> = []
+  const duplicateErrors: string[] = []
+
+  if (companies.length === 0) {
+    return { validCompanies: [], duplicateCompanies: [], duplicateErrors: [] }
+  }
+
+  try {
+    // 企業名と電話番号の組み合わせを抽出
+    const companyNames = companies.map((c: BulkCompanyInput) => c.name)
+
+    // supabase-apiから関数をインポート
+    const { getCompanies } = await import('./supabase-api')
+
+    // DBから既存の企業を取得（名前でフィルタリング）
+    const existingCompanies = await getCompanies()
+    const filteredExisting = existingCompanies.filter((c) => companyNames.includes(c.name))
+
+    // 既存企業との比較
+    const existingSet = new Set(
+      filteredExisting.map((c: { name: string; phone?: string }) => `${c.name}|${c.phone || ''}`)
+    )
+
+    const validCompanies: BulkCompanyInput[] = []
+
+    companies.forEach((company: BulkCompanyInput) => {
+      const key = `${company.name}|${company.phone || ''}`
+      if (existingSet.has(key)) {
+        duplicateCompanies.push({
+          name: company.name,
+          phone: company.phone || '',
+        })
+        if (!skipDuplicates) {
+          duplicateErrors.push(`重複: ${company.name}${company.phone ? `(${company.phone})` : ''}`)
+        }
+      } else {
+        validCompanies.push(company)
+      }
+    })
+
+    return { validCompanies, duplicateCompanies, duplicateErrors }
+  } catch (err) {
+    duplicateErrors.push(
+      `重複チェック中にエラーが発生しました: ${err instanceof Error ? err.message : '不明なエラー'}`
+    )
+    return { validCompanies: companies, duplicateCompanies: [], duplicateErrors }
   }
 }
 

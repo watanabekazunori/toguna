@@ -40,43 +40,52 @@ export default function LoginPage() {
         return
       }
 
-      // 認証成功後、operatorsテーブルからロールを取得（タイムアウト付き）
+      // 認証成功後、operatorsテーブルからロールを取得（リトライ付き）
       console.log('Login successful, fetching operator role for:', email)
 
-      let operator = null
-      let operatorError = null
+      let role: string | null = null
 
-      try {
-        // 5秒でタイムアウト
-        const operatorPromise = supabase
-          .from('operators')
-          .select('role')
-          .eq('email', email)
-          .single()
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const operatorPromise = supabase
+            .from('operators')
+            .select('role')
+            .eq('email', email)
+            .single()
 
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Operator query timeout')), 5000)
-        )
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Operator query timeout')), 4000)
+          )
 
-        const result = await Promise.race([operatorPromise, timeoutPromise]) as any
-        operator = result.data
-        operatorError = result.error
-      } catch (err) {
-        console.error('Operator query failed or timed out:', err)
-        operatorError = err
+          interface OperatorQueryResult {
+            data?: { role: string } | null
+            error?: { code: string } | null
+          }
+
+          const result = await Promise.race<OperatorQueryResult>([operatorPromise, timeoutPromise])
+          if (result.data?.role) {
+            role = result.data.role
+            // user_metadataにキャッシュ
+            supabase.auth.updateUser({ data: { role } }).catch(() => {})
+            break
+          }
+          if (result.error?.code === 'PGRST116') break // レコードなし
+        } catch (err) {
+          console.warn(`Operator query attempt ${attempt}/3 failed:`, err)
+          if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt))
+        }
       }
 
-      console.log('Operator data:', operator, 'Error:', operatorError)
+      // フォールバック: user_metadataからロール復元
+      if (!role) {
+        role = authData.user?.user_metadata?.role || 'operator'
+      }
 
-      // ロールに応じてリダイレクト
-      const role = operator?.role
       console.log('Determined role:', role)
 
       if (role === 'director') {
-        console.log('Redirecting to /director')
         window.location.href = '/director'
       } else {
-        console.log('Redirecting to /')
         window.location.href = '/'
       }
     } catch (err) {
@@ -160,6 +169,28 @@ export default function LoginPage() {
             )}
           </Button>
         </form>
+
+        {/* Links */}
+        <div className="space-y-2 text-sm text-center">
+          <div>
+            <a
+              href="/forgot-password"
+              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+            >
+              パスワードをお忘れの方
+            </a>
+          </div>
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-2">
+            <span className="text-slate-500 dark:text-slate-400">アカウントをお作りの方は</span>
+            <br />
+            <a
+              href="/signup"
+              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
+            >
+              こちらからサインアップ
+            </a>
+          </div>
+        </div>
 
         {/* Footer */}
         <div className="text-center text-xs text-slate-500 dark:text-slate-400">

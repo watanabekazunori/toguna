@@ -1,14 +1,25 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth-context"
-import { getOperatorHomeData, type OperatorHomeData } from "@/lib/supabase-api"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/auth-context'
+import { createClient } from '@/lib/supabase/client'
+import {
+  getOperatorAssignments,
+  type OperatorProjectAssignment,
+  getProjectStats,
+  type ProjectStats,
+  updateSalesFloorStatus,
+} from '@/lib/projects-api'
+import { getOperatorHomeData, type OperatorHomeData } from '@/lib/supabase-api'
+import { ErrorAlert } from '@/components/error-alert'
+import { useToast } from '@/hooks/use-toast'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Phone,
   Target,
@@ -29,16 +40,18 @@ import {
   Trophy,
   Flame,
   Users,
-} from "lucide-react"
-import Link from "next/link"
+  Plus,
+  X,
+} from 'lucide-react'
+import Link from 'next/link'
 
-type Period = "昨日" | "今日" | "今週"
+type Period = '昨日' | '今日' | '今週'
 
 type ScheduleSlot = {
   time: string
-  project: string
+  projectName: string
   projectColor: string
-  clientId: string
+  projectId: string
   remaining: {
     s: number
     a: number
@@ -48,40 +61,104 @@ type ScheduleSlot = {
 }
 
 export default function OperatorHome() {
-  const [selectedPeriod, setSelectedPeriod] = useState<Period>("今日")
+  const [selectedProjectIndex, setSelectedProjectIndex] = useState(0)
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>('今日')
+  const [assignments, setAssignments] = useState<OperatorProjectAssignment[]>([])
+  const [projectStats, setProjectStats] = useState<Record<string, ProjectStats>>({})
   const [homeData, setHomeData] = useState<OperatorHomeData | null>(null)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const { user, signOut, isLoading, isDirector } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
+
+  const fetchData = async () => {
+    setIsLoadingData(true)
+    setDataError(null)
+    try {
+      if (!user?.id) return
+
+      // オペレーターのプロジェクト割り当てを取得
+      const userAssignments = await getOperatorAssignments(user.id)
+      setAssignments(userAssignments)
+
+      // 各プロジェクトの統計を取得
+      if (userAssignments.length > 0) {
+        const statsPromises = userAssignments.map(a =>
+          getProjectStats(a.project_id).catch(err => {
+            console.error(`Error fetching stats for project ${a.project_id}:`, err)
+            return null
+          })
+        )
+        const stats = await Promise.all(statsPromises)
+        const statsMap: Record<string, ProjectStats> = {}
+        userAssignments.forEach((assignment, i) => {
+          if (stats[i]) {
+            statsMap[assignment.project_id] = stats[i]!
+          }
+        })
+        setProjectStats(statsMap)
+      }
+
+      // 営業フロア状態を更新（初期状態: idle）
+      await updateSalesFloorStatus(user.id, {
+        status: 'idle',
+      })
+
+      // レガシーデータも取得（互換性のため）
+      const data = await getOperatorHomeData()
+      setHomeData(data)
+    } catch (error) {
+      console.error('Failed to fetch home data:', error)
+      setDataError('データの取得に失敗しました。ネットワーク接続を確認してください。')
+    } finally {
+      setIsLoadingData(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchData() {
-      setIsLoadingData(true)
-      setDataError(null)
-      try {
-        const data = await getOperatorHomeData()
-        setHomeData(data)
-      } catch (error) {
-        console.error('Failed to fetch home data:', error)
-        setDataError('データの取得に失敗しました')
-      } finally {
-        setIsLoadingData(false)
-      }
-    }
     // 認証が完了してからデータを取得
     if (!isLoading) {
       fetchData()
     }
-  }, [isLoading])
+  }, [isLoading, user?.id])
+
+  // Realtime subscription for new project assignments
+  useEffect(() => {
+    if (!user?.id) return
+
+    const supabase = createClient()
+    const channel = supabase.channel(`operator-assignments-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'operator_project_assignments',
+          filter: `operator_id=eq.${user.id}`,
+        },
+        () => {
+          toast({
+            title: '新しいプロジェクトが割り当てられました',
+            description: '割り当てを確認するため、ページを更新しています...',
+          })
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, toast])
 
   const handleSignOut = async () => {
     await signOut()
     window.location.href = '/login'
   }
 
-  const handleStartCalling = (clientId: string) => {
-    router.push(`/call-list?client_id=${clientId}`)
+  const handleStartCalling = (projectId: string) => {
+    router.push(`/call-list?project_id=${projectId}`)
   }
 
   if (isLoading) {
@@ -121,48 +198,129 @@ export default function OperatorHome() {
     )
   }
 
-  const clients = homeData?.clients || []
-  const totalCalls = homeData?.totalCalls || 0
-  const totalTarget = homeData?.totalTarget || 0
-  const totalAppointments = homeData?.totalAppointments || 0
-  const weeklyAppointmentTarget = homeData?.weeklyAppointmentTarget || 3
-  const remainingCompanies = homeData?.remainingCompanies || { S: 0, A: 0, B: 0 }
+  // プロジェクトが割り当てられていない場合
+  if (assignments.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900">
+        <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="max-w-[1920px] mx-auto px-8 h-16 flex items-center justify-between">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent">
+              TOGUNA
+            </h1>
+            <div className="flex items-center gap-4">
+              {isDirector && (
+                <Link href="/director">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Users className="h-4 w-4" />
+                    ディレクター画面
+                  </Button>
+                </Link>
+              )}
+              <Button variant="ghost" size="icon" onClick={handleSignOut}>
+                <LogOut className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </header>
 
-  // スケジュールスロットをクライアントデータから動的に生成
-  const scheduleSlots: ScheduleSlot[] = clients.slice(0, 3).map((client, index) => {
-    const times = ["9:00-10:00", "10:00-11:00", "11:00-12:00"]
+        <main className="max-w-[1920px] mx-auto px-8 py-8">
+          <Card className="p-8 max-w-2xl mx-auto bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+            <div className="text-center space-y-4">
+              <div className="text-slate-400 mb-4">
+                <Target className="h-12 w-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                プロジェクトが割り当てられていません
+              </h3>
+              <p className="text-sm text-slate-500">
+                ディレクター画面からプロジェクトを割り当ててください。
+              </p>
+              {isDirector && (
+                <Link href="/director/projects">
+                  <Button className="mt-4">プロジェクト管理へ</Button>
+                </Link>
+              )}
+            </div>
+          </Card>
+        </main>
+      </div>
+    )
+  }
+
+  const selectedAssignment = assignments[selectedProjectIndex]
+  const selectedProject = selectedAssignment?.project
+  const selectedStats = selectedAssignment ? projectStats[selectedAssignment.project_id] : null
+
+  // プロジェクトカラー（ここでは簡単に index に基づいて選択）
+  const PROJECT_COLORS = [
+    'bg-blue-500',
+    'bg-green-500',
+    'bg-purple-500',
+    'bg-orange-500',
+    'bg-pink-500',
+    'bg-cyan-500',
+  ]
+  const selectedProjectColor = PROJECT_COLORS[selectedProjectIndex % PROJECT_COLORS.length]
+
+  // Helper function to calculate rank-based company counts (S8)
+  const calculateRankBreakdown = (totalRemaining: number) => {
+    // Since ProjectStats only provides total remaining, we can't calculate accurate breakdown
+    // Show total remaining and note that S/A/B breakdown requires company list
+    // This is a placeholder that shows the total for now
+    return {
+      s: 0,
+      a: 0,
+      b: totalRemaining,
+    }
+  }
+
+  // スケジュールスロットを動的に生成（最大3スロット）
+  const scheduleSlots: ScheduleSlot[] = assignments.slice(0, 3).map((assignment, index) => {
+    const times = ['9:00-10:00', '10:00-11:00', '11:00-12:00']
+    const stats = projectStats[assignment.project_id]
+    const rankBreakdown = calculateRankBreakdown(stats?.remaining_companies || 0)
     return {
       time: times[index] || `${9 + index}:00-${10 + index}:00`,
-      project: client.name,
-      projectColor: client.bgColor,
-      clientId: client.id,
-      remaining: {
-        s: remainingCompanies.S,
-        a: remainingCompanies.A,
-        b: remainingCompanies.B,
-      },
-      isActive: index === 0,
+      projectName: assignment.project?.name || 'プロジェクト',
+      projectColor: PROJECT_COLORS[index % PROJECT_COLORS.length],
+      projectId: assignment.project_id,
+      remaining: rankBreakdown,
+      isActive: index === selectedProjectIndex,
     }
   })
+
+  // パフォーマンス指標の計算
+  const dailyCallTarget = selectedProject?.daily_call_target || 60
+  const todayCallProgress = selectedStats
+    ? (selectedStats.today_calls / dailyCallTarget) * 100
+    : 0
+
+  const weeklyAppointmentTarget = selectedProject?.weekly_appointment_target || 3
+  const appointmentProgressPercent = selectedStats
+    ? (selectedStats.total_appointments / weeklyAppointmentTarget) * 100
+    : 0
+
+  const appointmentRate = selectedStats?.appointment_rate || 0
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="max-w-[1920px] mx-auto px-8 h-16 flex items-center justify-between">
-          {/* Logo */}
+          {/* Logo and Current Project */}
           <div className="flex items-center gap-6">
             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent">
               TOGUNA
             </h1>
-            {clients.length > 0 && (
-              <Badge className="bg-blue-500 text-white px-4 py-1 text-sm font-medium">{clients[0].name}</Badge>
+            {selectedProject && (
+              <Badge className={`${selectedProjectColor} text-white px-4 py-1 text-sm font-medium`}>
+                {selectedProject.name}
+              </Badge>
             )}
           </div>
 
           {/* User Actions */}
           <div className="flex items-center gap-4">
-            {/* ディレクター画面への切り替えボタン（ディレクターのみ表示） */}
             {isDirector && (
               <Link href="/director">
                 <Button variant="outline" size="sm" className="gap-2">
@@ -197,21 +355,59 @@ export default function OperatorHome() {
       </header>
 
       <main className="max-w-[1920px] mx-auto px-8 py-8 space-y-6">
-        {/* Section 1: Performance Summary */}
+        {/* Error Alert */}
+        {dataError && (
+          <ErrorAlert
+            message={dataError}
+            onRetry={() => fetchData()}
+          />
+        )}
+
+        {/* Section 1: 6-Project Switcher */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">プロジェクト選択</h2>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {assignments.map((assignment, index) => (
+              <Button
+                key={assignment.id}
+                onClick={() => setSelectedProjectIndex(index)}
+                variant={index === selectedProjectIndex ? 'default' : 'outline'}
+                className={`px-4 py-2 whitespace-nowrap transition-all ${
+                  index === selectedProjectIndex
+                    ? `${PROJECT_COLORS[index % PROJECT_COLORS.length]} text-white shadow-lg`
+                    : ''
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full mr-2 ${PROJECT_COLORS[index % PROJECT_COLORS.length]}`}></div>
+                {assignment.project?.name || `プロジェクト ${index + 1}`}
+              </Button>
+            ))}
+            {assignments.length < 6 && (
+              <Button variant="outline" size="sm" className="px-3">
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </section>
+
+        {/* Section 2: Performance Summary Grid */}
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">実績サマリー</h2>
             <div className="flex gap-2">
-              {(["昨日", "今日", "今週"] as Period[]).map((period) => (
+              {(['昨日', '今日', '今週'] as Period[]).map((period) => (
                 <Button
                   key={period}
-                  variant={selectedPeriod === period ? "default" : "outline"}
+                  variant={selectedPeriod === period ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setSelectedPeriod(period)}
                   className={
                     selectedPeriod === period
-                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30"
-                      : ""
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
+                      : ''
                   }
                 >
                   {period}
@@ -221,136 +417,85 @@ export default function OperatorHome() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Client Cards */}
-            {clients.length === 0 ? (
-              <Card className="p-6 col-span-full bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border-2 border-dashed">
-                <div className="text-center py-8">
-                  <div className="text-slate-400 mb-4">
-                    <Target className="h-12 w-12 mx-auto" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    クライアントが登録されていません
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    ディレクター画面からクライアントを登録してください。
-                  </p>
-                </div>
-              </Card>
-            ) : (
-              clients.map((client) => {
-                const progress = (client.callsCompleted / client.callsTarget) * 100
-                const connectionRate =
-                  client.callsCompleted > 0 ? Math.round((client.connections / client.callsCompleted) * 100) : 0
-
-                return (
-                  <Card
-                    key={client.id}
-                    className="p-6 hover:shadow-xl transition-all duration-300 border-2 hover:-translate-y-1 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
-                  >
-                    <div className="space-y-4">
-                      {/* Client Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full ${client.bgColor}`}></div>
-                          <h3 className={`text-lg font-bold ${client.color}`}>{client.name}</h3>
-                        </div>
-                        <Badge
-                          variant={
-                            client.statusType === "success"
-                              ? "default"
-                              : client.statusType === "warning"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                          className="font-medium"
-                        >
-                          {client.statusType === "success" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                          {client.statusType === "warning" && <AlertTriangle className="h-3 w-3 mr-1" />}
-                          {client.statusType === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                          {client.status}
-                        </Badge>
-                      </div>
-
-                      {/* Calls Progress */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-slate-600 dark:text-slate-400">架電</span>
-                          <span className="text-lg font-bold">
-                            {client.callsCompleted}/{client.callsTarget}{" "}
-                            <span className="text-sm text-slate-500">({Math.round(progress)}%)</span>
-                          </span>
-                        </div>
-                        <Progress
-                          value={progress}
-                          className="h-3 bg-slate-200 dark:bg-slate-800"
-                          indicatorClassName={`${client.bgColor} transition-all duration-500`}
-                        />
-                      </div>
-
-                      {/* Stats */}
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="space-y-1">
-                          <div className="text-sm text-slate-600 dark:text-slate-400">接続</div>
-                          <div className="text-2xl font-bold">
-                            {client.connections}
-                            <span className="text-sm text-slate-500 ml-1">件</span>
-                          </div>
-                          {connectionRate > 0 && <div className="text-xs text-slate-500">({connectionRate}%)</div>}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-sm text-slate-600 dark:text-slate-400">アポ</div>
-                          <div className="text-2xl font-bold flex items-center gap-1">
-                            {client.appointments}
-                            <span className="text-sm text-slate-500">件</span>
-                            {client.appointments > 0 && <Sparkles className="h-4 w-4 text-yellow-500" />}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Start Calling Button */}
-                      <Button
-                        onClick={() => handleStartCalling(client.id)}
-                        className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl"
-                      >
-                        <Rocket className="h-4 w-4 mr-2" />
-                        架電開始
-                      </Button>
-                    </div>
-                  </Card>
-                )
-              })
-            )}
-
-            {/* Total Summary Card */}
-            <Card className="p-6 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-xl shadow-blue-500/30 border-0">
+            {/* 架電数 Card */}
+            <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm hover:shadow-xl transition-all border-2">
               <div className="space-y-4">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  合計サマリー
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-5 w-5" />
-                      <span>合計架電</span>
-                    </div>
-                    <span className="text-2xl font-bold">
-                      {totalCalls}/{totalTarget}件
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">架電数</h3>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100">
+                      {selectedStats?.today_calls || 0}
                     </span>
+                    <span className="text-lg text-slate-500">/ {dailyCallTarget}件</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Target className="h-5 w-5" />
-                      <span>合計アポ</span>
-                    </div>
-                    <span className="text-2xl font-bold">{totalAppointments}/{weeklyAppointmentTarget}件</span>
+                  <Progress
+                    value={Math.min(todayCallProgress, 100)}
+                    className="h-2 bg-slate-200 dark:bg-slate-800"
+                    indicatorClassName={`${selectedProjectColor} transition-all duration-500`}
+                  />
+                  <div className="text-sm text-slate-500">
+                    {Math.round(todayCallProgress)}% 達成
                   </div>
-                  <div className="pt-2">
-                    <Progress
-                      value={totalTarget > 0 ? (totalCalls / totalTarget) * 100 : 0}
-                      className="h-2 bg-blue-400"
-                      indicatorClassName="bg-white"
-                    />
+                </div>
+              </div>
+            </Card>
+
+            {/* アポ獲得 Card */}
+            <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm hover:shadow-xl transition-all border-2">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-green-600" />
+                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">アポ獲得</h3>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100">
+                      {selectedStats?.total_appointments || 0}
+                    </span>
+                    <span className="text-lg text-slate-500">/ {weeklyAppointmentTarget}件</span>
+                  </div>
+                  <Progress
+                    value={Math.min(appointmentProgressPercent, 100)}
+                    className="h-2 bg-slate-200 dark:bg-slate-800"
+                    indicatorClassName="bg-green-500 transition-all duration-500"
+                  />
+                  <div className="text-sm text-slate-500">
+                    {Math.round(appointmentProgressPercent)}% 達成
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* アポ率 Card */}
+            <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm hover:shadow-xl transition-all border-2">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-purple-600" />
+                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">アポ率</h3>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100">
+                      {appointmentRate.toFixed(1)}
+                    </span>
+                    <span className="text-lg text-slate-500">%</span>
+                  </div>
+                  <Progress
+                    value={Math.min(appointmentRate, 100)}
+                    className="h-2 bg-slate-200 dark:bg-slate-800"
+                    indicatorClassName="bg-purple-500 transition-all duration-500"
+                  />
+                  <div className="text-sm text-slate-500">
+                    目標: 15% 以上
                   </div>
                 </div>
               </div>
@@ -358,7 +503,7 @@ export default function OperatorHome() {
           </div>
         </section>
 
-        {/* Section 2 & 3: AI Coaching and Schedule */}
+        {/* Section 3 & 4: AI Coaching and Schedule */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* AI Coaching */}
           <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm hover:shadow-xl transition-shadow border-2">
@@ -375,10 +520,10 @@ export default function OperatorHome() {
                   <h4 className="font-bold">今日の優先アクション</h4>
                 </div>
                 <div className="bg-amber-50 dark:bg-amber-950/30 border-l-4 border-amber-500 p-4 rounded-r-lg space-y-3">
-                  {remainingCompanies.S > 0 ? (
+                  {selectedStats && selectedStats.remaining_companies > 0 ? (
                     <>
                       <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                        <span className="font-semibold">S判定企業 {remainingCompanies.S}社</span>が残っています。
+                        <span className="font-semibold">{selectedStats.remaining_companies}社</span>の企業がまだ架電対象です。
                         優先的にアプローチしましょう。
                       </p>
                       <div className="space-y-2">
@@ -386,7 +531,7 @@ export default function OperatorHome() {
                         <ul className="space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
                           <li className="flex items-start gap-2">
                             <span className="text-green-500 mt-0.5">•</span>
-                            <span>S判定企業を優先架電</span>
+                            <span>優先度の高い企業から架電開始</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="text-green-500 mt-0.5">•</span>
@@ -412,13 +557,14 @@ export default function OperatorHome() {
                   <h4 className="font-bold">今日の目標</h4>
                 </div>
                 <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30 border-l-4 border-orange-500 p-4 rounded-r-lg">
-                  {totalAppointments < weeklyAppointmentTarget ? (
+                  {selectedStats && selectedStats.total_appointments < weeklyAppointmentTarget ? (
                     <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                      週間目標まであと<span className="font-bold text-orange-600">{weeklyAppointmentTarget - totalAppointments}件</span>
-                      のアポが必要です。
+                      週間目標まであと<span className="font-bold text-orange-600">
+                        {weeklyAppointmentTarget - selectedStats.total_appointments}件
+                      </span>のアポが必要です。
                       <Flame className="inline h-4 w-4 text-orange-500 ml-1" />
                       <br />
-                      残り<span className="font-semibold">{remainingCompanies.S + remainingCompanies.A + remainingCompanies.B}社</span>に集中しましょう。
+                      本日の架電目標: <span className="font-semibold">{dailyCallTarget}件</span>
                     </p>
                   ) : (
                     <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
@@ -430,7 +576,7 @@ export default function OperatorHome() {
                 </div>
               </div>
 
-              {/* Yesterday's Win */}
+              {/* Tip */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                   <Trophy className="h-5 w-5" />
@@ -468,27 +614,27 @@ export default function OperatorHome() {
                     key={index}
                     className={`p-4 transition-all duration-300 ${
                       slot.isActive
-                        ? "border-2 border-blue-500 shadow-lg shadow-blue-500/20 bg-blue-50 dark:bg-blue-950/30"
-                        : "border hover:border-slate-300 dark:hover:border-slate-700"
+                        ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20 bg-blue-50 dark:bg-blue-950/30'
+                        : 'border hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-2 h-2 rounded-full ${slot.isActive ? "bg-green-500 animate-pulse" : "bg-slate-300"}`}
+                            className={`w-2 h-2 rounded-full ${slot.isActive ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}
                           ></div>
                           <span className="font-semibold text-slate-900 dark:text-slate-100">{slot.time}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className={`w-3 h-3 rounded-full ${slot.projectColor}`}></div>
-                          <span className="font-bold text-slate-900 dark:text-slate-100">{slot.project}</span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100">{slot.projectName}</span>
                         </div>
                       </div>
                       <div className="text-sm text-slate-600 dark:text-slate-400">
-                        残リスト:{" "}
+                        残企業:{' '}
                         <span className="font-semibold">
-                          S{slot.remaining.s} / A{slot.remaining.a} / B{slot.remaining.b}
+                          {slot.remaining.s + slot.remaining.a + slot.remaining.b}社
                         </span>
                       </div>
                       <div className="flex gap-2">
@@ -499,7 +645,7 @@ export default function OperatorHome() {
                         {slot.isActive && (
                           <Button
                             size="sm"
-                            onClick={() => handleStartCalling(slot.clientId)}
+                            onClick={() => handleStartCalling(slot.projectId)}
                             className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl"
                           >
                             <Rocket className="h-3 w-3 mr-1" />
@@ -522,8 +668,34 @@ export default function OperatorHome() {
             </div>
           </Card>
         </section>
-      </main>
 
+        {/* Section 5: Quick Actions */}
+        <section>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <Button
+              onClick={() => selectedProject && handleStartCalling(selectedProject.id)}
+              className="bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl h-12"
+            >
+              <Rocket className="h-5 w-5 mr-2" />
+              架電開始
+            </Button>
+            <Button variant="outline" className="h-12">
+              <Calendar className="h-5 w-5 mr-2" />
+              スケジュール調整
+            </Button>
+            <Link href="/performance">
+              <Button variant="outline" className="h-12 w-full">
+                <TrendingUp className="h-5 w-5 mr-2" />
+                成績を見る
+              </Button>
+            </Link>
+            <Button variant="outline" className="h-12">
+              <Target className="h-5 w-5 mr-2" />
+              レポート確認
+            </Button>
+          </div>
+        </section>
+      </main>
     </div>
   )
 }

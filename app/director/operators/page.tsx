@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
-import { getOperators, type Operator } from '@/lib/api'
+import { getOperators, type Operator, getCallLogs } from '@/lib/api'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,16 +50,35 @@ export default function OperatorsPage() {
   useEffect(() => {
     const fetchOperators = async () => {
       try {
-        const data = await getOperators()
-        // 仮の統計データを追加
-        const operatorsWithStats: OperatorWithStats[] = data.map((op, index) => ({
-          ...op,
-          todayCalls: Math.floor(Math.random() * 50) + 10,
-          todayAppointments: Math.floor(Math.random() * 3),
-          weeklyTarget: 300,
-          weeklyProgress: Math.floor(Math.random() * 300) + 50,
-          avgCallDuration: `${Math.floor(Math.random() * 3) + 1}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
-        }))
+        const today = new Date().toISOString().split('T')[0]
+        const weekStart = new Date()
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+        const weekStartStr = weekStart.toISOString().split('T')[0]
+
+        const [operatorsData, allLogs] = await Promise.all([
+          getOperators(),
+          getCallLogs(),
+        ])
+
+        const operatorsWithStats: OperatorWithStats[] = operatorsData.map((op) => {
+          const opLogs = allLogs.filter((l: any) => l.operator_id === op.id)
+          const todayLogs = opLogs.filter((l: any) => l.called_at?.startsWith(today))
+          const weekLogs = opLogs.filter((l: any) => l.called_at && l.called_at >= weekStartStr)
+          const todayApps = todayLogs.filter((l: any) => l.result === 'アポ獲得').length
+          const totalDuration = todayLogs.reduce((sum: number, l: any) => sum + (l.duration || 0), 0)
+          const avgSecs = todayLogs.length > 0 ? Math.round(totalDuration / todayLogs.length) : 0
+          const avgMins = Math.floor(avgSecs / 60)
+          const avgRemSecs = avgSecs % 60
+
+          return {
+            ...op,
+            todayCalls: todayLogs.length,
+            todayAppointments: todayApps,
+            weeklyTarget: 300,
+            weeklyProgress: weekLogs.length,
+            avgCallDuration: `${avgMins}:${avgRemSecs.toString().padStart(2, '0')}`,
+          }
+        })
         setOperators(operatorsWithStats)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'オペレーターの取得に失敗しました')
@@ -152,6 +171,11 @@ export default function OperatorsPage() {
               </div>
             </div>
           </div>
+          <Link href="/director/operators/new">
+            <Button className="bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl transition-all duration-300">
+              新規オペレーター追加
+            </Button>
+          </Link>
         </div>
 
         {/* Stats Cards */}

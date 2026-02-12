@@ -85,7 +85,11 @@ export default function UploadPage() {
     success: boolean
     imported: number
     errors: string[]
+    skipped?: number
+    duplicates?: Array<{ name: string; phone: string }>
   } | null>(null)
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null)
   const [companies, setCompanies] = useState<UploadedCompany[]>([])
   const [scoringProgress, setScoringProgress] = useState(0)
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false)
@@ -147,7 +151,7 @@ export default function UploadPage() {
     }
   }
 
-  const handleUpload = async () => {
+  const handleUpload = async (skipDuplicates: boolean = false) => {
     if (!file) {
       setError('ファイルを選択してください')
       return
@@ -164,12 +168,37 @@ export default function UploadPage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('client_id', selectedClientId)
+      if (skipDuplicates) {
+        formData.append('skip_duplicates', 'true')
+      }
 
       const result = await uploadCompaniesCSV(formData)
+
+      // 重複があり、スキップしていない場合は警告を表示
+      if (
+        result.duplicates &&
+        result.duplicates.length > 0 &&
+        !skipDuplicates
+      ) {
+        setUploadResult({
+          success: false,
+          imported: result.imported,
+          errors: result.errors,
+          skipped: result.skipped,
+          duplicates: result.duplicates,
+        })
+        setPendingFormData(formData)
+        setShowDuplicateWarning(true)
+        setUploadState('idle')
+        return
+      }
+
       setUploadResult({
         success: result.success,
         imported: result.imported,
         errors: result.errors,
+        skipped: result.skipped,
+        duplicates: result.duplicates,
       })
 
       if (result.imported > 0 && result.companies) {
@@ -190,6 +219,7 @@ export default function UploadPage() {
         }))
         setCompanies(uploadedCompanies)
         setUploadState('completed') // 既にスコアリング済み
+        setShowDuplicateWarning(false)
       } else {
         setUploadState('idle')
       }
@@ -498,7 +528,7 @@ export default function UploadPage() {
               {/* Upload Button */}
               {file && uploadState === 'idle' && (
                 <Button
-                  onClick={handleUpload}
+                  onClick={() => handleUpload(false)}
                   className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30"
                 >
                   <Upload className="mr-2 h-4 w-4" />
@@ -615,6 +645,96 @@ export default function UploadPage() {
             </div>
           </Card>
         </div>
+
+        {/* Duplicate Warning Dialog */}
+        {showDuplicateWarning && uploadResult?.duplicates && uploadResult.duplicates.length > 0 && (
+          <Card className="p-6 bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-200 dark:border-amber-800">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-amber-900 dark:text-amber-100 mb-2">
+                    {uploadResult.duplicates.length}件の重複企業が見つかりました
+                  </h3>
+                  <p className="text-sm text-amber-800 dark:text-amber-200 mb-4">
+                    以下の企業は既にデータベースに存在しています。スキップして続行しますか？
+                  </p>
+                  <div className="max-h-40 overflow-y-auto mb-4 bg-white/50 dark:bg-slate-900/50 rounded p-3">
+                    <ul className="space-y-1 text-sm text-amber-900 dark:text-amber-100">
+                      {uploadResult.duplicates.slice(0, 10).map((dup, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <span className="h-1.5 w-1.5 bg-amber-500 rounded-full" />
+                          {dup.name}
+                          {dup.phone && <span className="text-amber-600">({dup.phone})</span>}
+                        </li>
+                      ))}
+                      {uploadResult.duplicates.length > 10 && (
+                        <li className="text-amber-600">他 {uploadResult.duplicates.length - 10}件</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDuplicateWarning(false)
+                    setUploadResult(null)
+                    setPendingFormData(null)
+                  }}
+                  className="flex-1"
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowDuplicateWarning(false)
+                    if (pendingFormData) {
+                      setUploadState('uploading')
+                      uploadCompaniesCSV(pendingFormData).then((result) => {
+                        setUploadResult({
+                          success: result.success,
+                          imported: result.imported,
+                          errors: result.errors,
+                          skipped: result.skipped,
+                          duplicates: result.duplicates,
+                        })
+
+                        if (result.imported > 0 && result.companies) {
+                          const uploadedCompanies: UploadedCompany[] = result.companies.map((c) => ({
+                            id: c.id,
+                            name: c.name,
+                            industry: c.industry,
+                            employees: c.employees,
+                            location: c.location || '',
+                            phone: c.phone || '',
+                            website: c.website || '',
+                            scoreResult: {
+                              rank: c.rank,
+                              score: c.rank === 'S' ? 85 : c.rank === 'A' ? 70 : c.rank === 'B' ? 55 : 40,
+                              reasons: [],
+                            },
+                          }))
+                          setCompanies(uploadedCompanies)
+                          setUploadState('completed')
+                        } else {
+                          setUploadState('idle')
+                        }
+                        setPendingFormData(null)
+                      })
+                    }
+                  }}
+                  className="flex-1 bg-gradient-to-r from-amber-600 to-amber-500 text-white"
+                >
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                  重複をスキップして続行
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Results Table */}
         {companies.length > 0 && (

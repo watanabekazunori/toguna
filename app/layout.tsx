@@ -4,14 +4,20 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/contexts/auth-context"
 import { NotificationProvider } from "@/contexts/notification-context"
+import { ErrorBoundaryWrapper } from "@/components/error-boundary-wrapper"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "TOGUNA - 営業支援プラットフォーム",
-  description: "AIを活用したテレアポ営業支援プラットフォーム",
+  title: {
+    default: 'Toguna - AI搭載B2Bテレマーケティングプラットフォーム',
+    template: '%s | Toguna'
+  },
+  description: 'AIによる戦略構築、品質管理、ナーチャリング自動化を備えた次世代テレマーケティング管理システム',
+  keywords: ['テレマーケティング', 'B2B', 'AI', '営業支援', 'コール管理', 'SaaS'],
+  robots: { index: true, follow: true },
   generator: "v0.app",
   icons: {
     icon: [
@@ -42,7 +48,9 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         <AuthProvider>
           <NotificationProvider>
-            {children}
+            <ErrorBoundaryWrapper>
+              {children}
+            </ErrorBoundaryWrapper>
           </NotificationProvider>
         </AuthProvider>
         <Analytics />

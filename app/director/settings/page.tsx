@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
+import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,15 +35,33 @@ import {
   RefreshCw,
   Users,
   AlertCircle,
+  AlertTriangle,
 } from 'lucide-react'
 import { checkZoomConfiguration, getZoomPhoneUsers } from '@/app/actions/zoom'
 import type { ZoomUser } from '@/lib/zoom'
 
+type SettingsData = {
+  companyName: string
+  adminEmail: string
+  notifyAppointment: boolean
+  notifyDailyReport: boolean
+  notifyWeeklyReport: boolean
+  autoScoring: boolean
+  defaultCallTarget: number
+  workStartTime: string
+  workEndTime: string
+  theme: string
+  language: string
+}
+
 export default function SettingsPage() {
   const { user, signOut, isDirector, isLoading: authLoading } = useAuth()
   const router = useRouter()
+  const supabase = createClient()
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Zoom設定状態
   const [zoomStatus, setZoomStatus] = useState<{
@@ -54,7 +73,7 @@ export default function SettingsPage() {
   const [loadingZoomUsers, setLoadingZoomUsers] = useState(false)
 
   // 設定状態
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<SettingsData>({
     companyName: 'TOGUNA',
     adminEmail: 'admin@toguna.com',
     notifyAppointment: true,
@@ -73,6 +92,13 @@ export default function SettingsPage() {
       router.replace('/')
     }
   }, [authLoading, isDirector, router])
+
+  // Load settings from database on mount
+  useEffect(() => {
+    if (user?.id) {
+      loadSettings()
+    }
+  }, [user?.id])
 
   // Zoom設定チェック
   useEffect(() => {
@@ -115,6 +141,37 @@ export default function SettingsPage() {
     }
   }
 
+  const loadSettings = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('user_settings')
+        .select('settings_key, settings_value')
+        .eq('user_id', user?.id)
+
+      if (fetchError) throw fetchError
+
+      if (data && data.length > 0) {
+        const loadedSettings: Partial<SettingsData> = {}
+        data.forEach((item) => {
+          if (typeof item.settings_value === 'object' && item.settings_value !== null) {
+            Object.assign(loadedSettings, item.settings_value)
+          }
+        })
+
+        if (Object.keys(loadedSettings).length > 0) {
+          setSettings((prev) => ({ ...prev, ...loadedSettings }))
+        }
+      }
+    } catch (err) {
+      console.error('Error loading settings:', err)
+      setError('設定の読み込みに失敗しました')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleSignOut = async () => {
     await signOut()
     router.replace('/login')
@@ -123,20 +180,47 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setIsSaving(true)
     setSaved(false)
+    setError(null)
 
-    // シミュレーション
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      const { error: deleteError } = await supabase
+        .from('user_settings')
+        .delete()
+        .eq('user_id', user?.id)
 
-    setIsSaving(false)
-    setSaved(true)
+      if (deleteError) throw deleteError
 
-    setTimeout(() => setSaved(false), 3000)
+      const { error: insertError } = await supabase
+        .from('user_settings')
+        .insert([
+          {
+            user_id: user?.id,
+            settings_key: 'app_settings',
+            settings_value: settings,
+            updated_at: new Date().toISOString(),
+          },
+        ])
+
+      if (insertError) throw insertError
+
+      setIsSaving(false)
+      setSaved(true)
+
+      setTimeout(() => setSaved(false), 3000)
+    } catch (err) {
+      console.error('Error saving settings:', err)
+      setError('設定の保存に失敗しました')
+      setIsSaving(false)
+    }
   }
 
-  if (authLoading || !isDirector) {
+  if (authLoading || !isDirector || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="text-slate-600">読み込み中...</p>
+        </div>
       </div>
     )
   }
@@ -177,6 +261,21 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-8 py-8 space-y-6">
+        {/* Error Message */}
+        {error && (
+          <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-red-700 dark:text-red-400">
+                エラー
+              </p>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {error}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">

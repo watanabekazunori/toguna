@@ -177,6 +177,7 @@ export async function getCompanies(params?: {
   client_id?: string
   rank?: string
   search?: string
+  project_id?: string
 }): Promise<Company[]> {
   let query = supabase
     .from('companies')
@@ -189,6 +190,9 @@ export async function getCompanies(params?: {
   }
   if (params?.rank) {
     query = query.eq('rank', params.rank)
+  }
+  if (params?.project_id) {
+    query = query.eq('project_id', params.project_id)
   }
   if (params?.search) {
     query = query.or(`name.ilike.%${params.search}%,industry.ilike.%${params.search}%`)
@@ -244,6 +248,19 @@ export async function updateCompany(id: string, input: Partial<Company>): Promis
     return null
   }
   return data
+}
+
+export async function deleteCompany(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('companies')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error('Failed to delete company:', error)
+    return false
+  }
+  return true
 }
 
 // ====== 架電ログ ======
@@ -1248,36 +1265,6 @@ export async function searchCompaniesWithIntentAndProduct(
   return { results: paginatedResults, summary }
 }
 
-// ホットリード取得（即時アプローチ対象）
-export async function getHotLeads(clientId?: string, limit = 20): Promise<IntentProductSearchResult[]> {
-  const { results } = await searchCompaniesWithIntentAndProduct({
-    clientId,
-    intentLevels: ['hot'],
-    sortBy: 'combined_score',
-    sortOrder: 'desc',
-    limit,
-  })
-  return results
-}
-
-// 商材別ベストマッチ取得
-export async function getBestMatchesForProduct(
-  productId: string,
-  limit = 20
-): Promise<IntentProductSearchResult[]> {
-  const product = await getProduct(productId)
-  if (!product) return []
-
-  const { results } = await searchCompaniesWithIntentAndProduct({
-    clientId: product.client_id,
-    productId,
-    minMatchScore: 60,
-    sortBy: 'combined_score',
-    sortOrder: 'desc',
-    limit,
-  })
-  return results
-}
 
 // オペレーター作成
 export type CreateOperatorInput = {

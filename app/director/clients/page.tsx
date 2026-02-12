@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { ErrorAlert } from '@/components/error-alert'
+import { ResponsiveTable } from '@/components/responsive-table'
 import {
   Table,
   TableBody,
@@ -57,18 +59,20 @@ export default function ClientsPage() {
     }
   }, [authLoading, isDirector, router])
 
-  useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        const data = await getClients()
-        setClients(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'クライアントの取得に失敗しました')
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchClients = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const data = await getClients()
+      setClients(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'クライアントの取得に失敗しました')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     if (isDirector) {
       fetchClients()
     }
@@ -171,9 +175,10 @@ export default function ClientsPage() {
 
         {/* Error Message */}
         {error && (
-          <Card className="p-4 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
-            <p className="text-red-600 dark:text-red-400">{error}</p>
-          </Card>
+          <ErrorAlert
+            message={error}
+            onRetry={() => fetchClients()}
+          />
         )}
 
         {/* Clients Table */}
@@ -189,7 +194,8 @@ export default function ClientsPage() {
               <p className="text-sm">新規クライアントを登録してください</p>
             </div>
           ) : (
-            <Table>
+            <ResponsiveTable>
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>クライアント名</TableHead>
@@ -259,6 +265,7 @@ export default function ClientsPage() {
                 ))}
               </TableBody>
             </Table>
+            </ResponsiveTable>
           )}
         </Card>
       </main>

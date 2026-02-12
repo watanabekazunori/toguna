@@ -60,6 +60,41 @@ export type IntentSignalFromScraping = {
   source: string
 }
 
+// ブラウザ環境かどうかを判定
+function isBrowser(): boolean {
+  return typeof window !== 'undefined'
+}
+
+// APIプロキシ経由でスクレイピング
+async function fetchViaScrapeApi(url: string, _options?: RequestInit): Promise<Response> {
+  const response = await fetch('/api/scrape', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ url }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Scrape API error: ${response.statusText}`)
+  }
+
+  const data = await response.json()
+
+  if (!data.success) {
+    throw new Error(`Scrape failed: ${data.error}`)
+  }
+
+  // Create a Response-like object with the scraped content
+  return {
+    ok: data.status >= 200 && data.status < 300,
+    status: data.status,
+    headers: new Headers(data.headers || {}),
+    text: async () => (typeof data.content === 'string' ? data.content : atob(data.content)),
+    json: async () => JSON.parse(data.content),
+  } as unknown as Response
+}
+
 // Google検索で企業の公式サイトを探す
 async function findCompanyWebsite(companyName: string): Promise<string | null> {
   try {
@@ -80,7 +115,9 @@ async function findCompanyWebsite(companyName: string): Promise<string | null> {
 
     for (const url of possibleDomains) {
       try {
-        const response = await fetch(url, {
+        const fetchFn = isBrowser() ? fetchViaScrapeApi : fetch
+
+        const response = await fetchFn(url, {
           method: 'HEAD',
           signal: AbortSignal.timeout(5000),
         })
@@ -101,7 +138,9 @@ async function findCompanyWebsite(companyName: string): Promise<string | null> {
 // 企業の公式サイトから情報を取得
 async function scrapeCompanyWebsite(url: string): Promise<Partial<ScrapedData['companyInfo']>> {
   try {
-    const response = await fetch(url, {
+    const fetchFn = isBrowser() ? fetchViaScrapeApi : fetch
+
+    const response = await fetchFn(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; TOGUNA-Bot/1.0)',
       },
@@ -154,7 +193,9 @@ async function searchCompanyNews(companyName: string): Promise<ScrapedData['news
     const query = encodeURIComponent(`${companyName} 資金調達 OR 新サービス OR 業務提携`)
     const rssUrl = `https://news.google.com/rss/search?q=${query}&hl=ja&gl=JP&ceid=JP:ja`
 
-    const response = await fetch(rssUrl, {
+    const fetchFn = isBrowser() ? fetchViaScrapeApi : fetch
+
+    const response = await fetchFn(rssUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; TOGUNA-Bot/1.0)',
       },
@@ -222,7 +263,9 @@ async function searchJobPostings(companyName: string): Promise<ScrapedData['hiri
     const query = encodeURIComponent(companyName)
     const indeedUrl = `https://jp.indeed.com/jobs?q=${query}&l=`
 
-    const response = await fetch(indeedUrl, {
+    const fetchFn = isBrowser() ? fetchViaScrapeApi : fetch
+
+    const response = await fetchFn(indeedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
@@ -287,7 +330,9 @@ async function searchPressReleases(companyName: string): Promise<ScrapedData['ne
     const query = encodeURIComponent(companyName)
     const prtimesUrl = `https://prtimes.jp/main/action.php?run=html&page=searchkey&search_word=${query}`
 
-    const response = await fetch(prtimesUrl, {
+    const fetchFn = isBrowser() ? fetchViaScrapeApi : fetch
+
+    const response = await fetchFn(prtimesUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },

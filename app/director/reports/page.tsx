@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
-import { getClients, getCallLogs, type Client, type CallLog } from '@/lib/api'
+import { getClients, getCallLogs, getOperators, type Client, type CallLog } from '@/lib/api'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -57,7 +57,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { FileSpreadsheet, FileText } from 'lucide-react'
 
-type PeriodOption = '今日' | '今週' | '今月' | '全期間'
+type PeriodOption = '今日' | '今週' | '今月' | '先月' | '全期間'
 
 export default function ReportsPage() {
   const { user, signOut, isDirector, isLoading: authLoading } = useAuth()
@@ -76,6 +76,55 @@ export default function ReportsPage() {
     }
   }, [authLoading, isDirector, router])
 
+  // フィルタリング関数
+  const filterLogsByPeriod = (logs: CallLog[], period: PeriodOption): CallLog[] => {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    switch (period) {
+      case '今日':
+        return logs.filter((log) => {
+          const logDate = new Date(log.created_at)
+          return logDate >= startOfToday && logDate < new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000)
+        })
+
+      case '今週': {
+        const dayOfWeek = startOfToday.getDay()
+        const startOfWeek = new Date(startOfToday)
+        startOfWeek.setDate(startOfToday.getDate() - dayOfWeek) // Sunday
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 7)
+        return logs.filter((log) => {
+          const logDate = new Date(log.created_at)
+          return logDate >= startOfWeek && logDate < endOfWeek
+        })
+      }
+
+      case '今月': {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+        return logs.filter((log) => {
+          const logDate = new Date(log.created_at)
+          return logDate >= startOfMonth && logDate < endOfMonth
+        })
+      }
+
+      case '先月': {
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const lastMonth = new Date(firstDayOfMonth.getTime() - 1)
+        const startOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1)
+        return logs.filter((log) => {
+          const logDate = new Date(log.created_at)
+          return logDate >= startOfLastMonth && logDate < firstDayOfMonth
+        })
+      }
+
+      case '全期間':
+      default:
+        return logs
+    }
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -85,31 +134,6 @@ export default function ReportsPage() {
         ])
         setClients(clientsData)
         setCallLogs(logsData)
-
-        // 日別データを実データから生成
-        const dailyMap = new Map<string, DailyCallData>()
-        logsData.forEach((log) => {
-          const date = new Date(log.created_at)
-          const dateKey = `${date.getMonth() + 1}/${date.getDate()}`
-          const existing = dailyMap.get(dateKey) || { date: dateKey, calls: 0, connections: 0, appointments: 0 }
-          existing.calls++
-          if (log.result === '接続') existing.connections++
-          if (log.result === 'アポ獲得') existing.appointments++
-          dailyMap.set(dateKey, existing)
-        })
-        setDailyData(Array.from(dailyMap.values()).slice(-14))
-
-        // オペレーター別データを実データから生成（TODO: 本来はoperatorsテーブルと結合）
-        const operatorMap = new Map<string, OperatorData>()
-        logsData.forEach((log) => {
-          const name = log.operator_id || '不明'
-          const existing = operatorMap.get(name) || { name, calls: 0, appointments: 0, rate: 0 }
-          existing.calls++
-          if (log.result === 'アポ獲得') existing.appointments++
-          existing.rate = existing.calls > 0 ? (existing.appointments / existing.calls) * 100 : 0
-          operatorMap.set(name, existing)
-        })
-        setOperatorData(Array.from(operatorMap.values()))
       } catch (err) {
         console.error('Failed to fetch data:', err)
       } finally {
@@ -121,6 +145,48 @@ export default function ReportsPage() {
       fetchData()
     }
   }, [isDirector])
+
+  // 期間が変わるたびにデータを再計算
+  useEffect(() => {
+    // 期間でフィルタリング
+    const filteredLogs = filterLogsByPeriod(callLogs, selectedPeriod)
+
+    // 日別データを生成
+    const dailyMap = new Map<string, DailyCallData>()
+    filteredLogs.forEach((log) => {
+      const date = new Date(log.created_at)
+      const dateKey = `${date.getMonth() + 1}/${date.getDate()}`
+      const existing = dailyMap.get(dateKey) || { date: dateKey, calls: 0, connections: 0, appointments: 0 }
+      existing.calls++
+      if (log.result === '接続') existing.connections++
+      if (log.result === 'アポ獲得') existing.appointments++
+      dailyMap.set(dateKey, existing)
+    })
+    setDailyData(Array.from(dailyMap.values()).slice(-14))
+
+    // オペレーター別データを生成
+    const operatorMap = new Map<string, OperatorData>()
+
+    // オペレーターIDから名前を取得するため、operatorsテーブルから情報を取得
+    const getOperatorsData = async () => {
+      const operatorsData = await getOperators()
+      const operatorNames = new Map(operatorsData.map((op) => [op.id, op.name]))
+
+      filteredLogs.forEach((log) => {
+        const operatorId = log.operator_id || '不明'
+        const name: string = operatorNames.get(operatorId) || operatorId
+        const existing: OperatorData = operatorMap.get(operatorId) || { name, calls: 0, appointments: 0, rate: 0 }
+        existing.calls++
+        if (log.result === 'アポ獲得') existing.appointments++
+        existing.rate = existing.calls > 0 ? (existing.appointments / existing.calls) * 100 : 0
+        operatorMap.set(operatorId, existing)
+      })
+
+      setOperatorData(Array.from(operatorMap.values()))
+    }
+
+    getOperatorsData()
+  }, [selectedPeriod, callLogs])
 
   const handleSignOut = async () => {
     await signOut()
@@ -177,8 +243,8 @@ export default function ReportsPage() {
     })
   }
 
-  // フィルタリング
-  const filteredLogs = callLogs.filter((log) => {
+  // フィルタリング（期間 + クライアント）
+  const filteredLogs = filterLogsByPeriod(callLogs, selectedPeriod).filter((log) => {
     if (selectedClientId !== 'all' && log.client_id !== selectedClientId) {
       return false
     }
@@ -288,6 +354,7 @@ export default function ReportsPage() {
                 <SelectItem value="今日">今日</SelectItem>
                 <SelectItem value="今週">今週</SelectItem>
                 <SelectItem value="今月">今月</SelectItem>
+                <SelectItem value="先月">先月</SelectItem>
                 <SelectItem value="全期間">全期間</SelectItem>
               </SelectContent>
             </Select>
@@ -416,6 +483,98 @@ export default function ReportsPage() {
                 <ResultPieChart data={pieData} height={300} />
               </Card>
             </div>
+
+            {/* Conversion Funnel */}
+            <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+              <h3 className="font-bold text-lg mb-6">コンバージョンファネル</h3>
+              <div className="space-y-6">
+                {/* 架電 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">架電</span>
+                    <span className="text-2xl font-bold text-blue-600">{stats.totalCalls}件</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
+                    <div className="bg-blue-600 h-full w-full rounded-full"></div>
+                  </div>
+                </div>
+
+                {/* ↓ 接続率 */}
+                <div className="flex justify-center py-1">
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-slate-600 dark:text-slate-400">↓ 接続率</div>
+                    <div className="text-lg font-bold text-cyan-600">
+                      {connectionRate}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* 接続 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">接続</span>
+                    <span className="text-2xl font-bold text-cyan-600">{stats.connections}件</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-cyan-600 h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${stats.totalCalls > 0 ? (stats.connections / stats.totalCalls) * 100 : 0}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* ↓ アポ率 */}
+                <div className="flex justify-center py-1">
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-slate-600 dark:text-slate-400">↓ アポ率</div>
+                    <div className="text-lg font-bold text-green-600">
+                      {stats.connections > 0
+                        ? ((stats.appointments / stats.connections) * 100).toFixed(1)
+                        : '0'}
+                      %
+                    </div>
+                  </div>
+                </div>
+
+                {/* アポ獲得 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">アポ獲得</span>
+                    <span className="text-2xl font-bold text-green-600">{stats.appointments}件</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-green-600 h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${stats.totalCalls > 0 ? (stats.appointments / stats.totalCalls) * 100 : 0}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* 統計情報 */}
+                <div className="mt-8 grid grid-cols-3 gap-4 pt-6 border-t border-slate-200 dark:border-slate-700">
+                  <div className="text-center">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">全体変換率</p>
+                    <p className="text-xl font-bold text-purple-600">{appointmentRate}%</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">不在/断り</p>
+                    <p className="text-xl font-bold text-orange-600">
+                      {stats.notReached + stats.rejected}件
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">脱落数</p>
+                    <p className="text-xl font-bold text-red-600">
+                      {stats.totalCalls - stats.appointments}件
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Card>
 
             {/* Operator Performance */}
             <Card className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
