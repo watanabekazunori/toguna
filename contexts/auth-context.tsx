@@ -89,65 +89,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ユーザープロファイルを取得（operatorsテーブルから、リトライ付き）
+  const fetchingRef = useRef(false)
   const fetchUserProfile = async (authUser: User) => {
-    const maxRetries = 3
-    const timeoutMs = 4000
+    // 二重呼び出しを防止
+    if (fetchingRef.current) return
+    fetchingRef.current = true
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const operatorPromise = supabase
-          .from('operators')
-          .select('id, name, email, role')
-          .eq('email', authUser.email)
-          .single()
+    try {
+      // まずキャッシュから即座にユーザー情報を設定（高速表示のため）
+      const cachedRole = authUser.user_metadata?.role as UserRole | undefined
+      const cachedOperatorId = authUser.user_metadata?.operator_id as string | undefined
+      if (cachedRole && cachedOperatorId) {
+        setUser({
+          id: cachedOperatorId,
+          email: authUser.email || '',
+          name: authUser.user_metadata?.name as string || authUser.email?.split('@')[0] || 'ユーザー',
+          role: cachedRole,
+        })
+      }
 
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Operator query timeout')), timeoutMs)
-        )
+      const maxRetries = 3
+      const timeoutMs = 8000
 
-        const result = await Promise.race([operatorPromise, timeoutPromise]) as any
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Supabaseのthenableを明示的にPromiseに変換
+          const operatorPromise = supabase
+            .from('operators')
+            .select('id, name, email, role')
+            .eq('email', authUser.email)
+            .single()
+            .then(result => result)
 
-        if (result.error && result.error.code !== 'PGRST116') {
-          throw new Error(result.error.message)
-        }
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Operator query timeout')), timeoutMs)
+          )
 
-        const operator = result.data
+          const result = await Promise.race([operatorPromise, timeoutPromise])
 
-        if (operator) {
-          const resolvedUser: AuthUser = {
-            id: operator.id,
-            email: operator.email,
-            name: operator.name,
-            role: operator.role || 'operator',
+          if (result.error && result.error.code !== 'PGRST116') {
+            throw new Error(result.error.message)
           }
-          setUser(resolvedUser)
-          // user_metadataにロールをキャッシュ（次回フォールバック用）
-          if (operator.role) {
-            supabase.auth.updateUser({ data: { role: operator.role, operator_id: operator.id } }).catch(() => {})
+
+          const operator = result.data
+
+          if (operator) {
+            const resolvedUser: AuthUser = {
+              id: operator.id,
+              email: operator.email,
+              name: operator.name,
+              role: operator.role || 'operator',
+            }
+            setUser(resolvedUser)
+            // user_metadataにロールをキャッシュ（次回フォールバック用）
+            if (operator.role) {
+              supabase.auth.updateUser({
+                data: { role: operator.role, operator_id: operator.id, name: operator.name }
+              }).catch(() => {})
+            }
+            return
           }
-          return
-        }
-        // operatorsテーブルにレコードが無い場合はリトライせずデフォルト
-        break
-      } catch (err) {
-        console.warn(`fetchUserProfile attempt ${attempt}/${maxRetries} failed:`, err)
-        if (attempt < maxRetries) {
-          await new Promise(r => setTimeout(r, 500 * attempt))
-          continue
+          // operatorsテーブルにレコードが無い場合はリトライせずデフォルト
+          break
+        } catch (err) {
+          console.warn(`fetchUserProfile attempt ${attempt}/${maxRetries} failed:`, err)
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 500 * attempt))
+            continue
+          }
         }
       }
+
+      // フォールバック: user_metadataからロールを復元（キャッシュ設定済みなら何もしない）
+      if (!cachedRole) {
+        setUser({
+          id: cachedOperatorId || authUser.id,
+          email: authUser.email || '',
+          name: authUser.email?.split('@')[0] || 'ユーザー',
+          role: 'operator',
+        })
+      }
+    } finally {
+      fetchingRef.current = false
     }
-
-    // フォールバック: user_metadataからロールを復元
-    const cachedRole = authUser.user_metadata?.role as UserRole | undefined
-    const cachedOperatorId = authUser.user_metadata?.operator_id as string | undefined
-
-    setUser({
-      id: cachedOperatorId || authUser.id,
-      email: authUser.email || '',
-      name: authUser.email?.split('@')[0] || 'ユーザー',
-      role: cachedRole || 'operator',
-    })
   }
 
   const signIn = async (email: string, password: string) => {
@@ -171,12 +195,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .select('id, name, email, role')
             .eq('email', data.user.email)
             .single()
+            .then(result => result)
 
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Operator query timeout')), 4000)
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Operator query timeout')), 8000)
           )
 
-          const result = await Promise.race([operatorPromise, timeoutPromise]) as any
+          const result = await Promise.race([operatorPromise, timeoutPromise])
           if (result.data) {
             operator = result.data
             // user_metadataにロールをキャッシュ
