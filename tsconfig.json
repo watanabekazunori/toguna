@@ -40,6 +40,7 @@
     "__tests__",
     "vitest.config.ts",
     "backend",
-    "frontend"
+    "frontend",
+    "supabase/functions"
   ]
 }
