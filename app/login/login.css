@@ -1,0 +1,304 @@
+/* TOGUNA HOME'S Login — LITO iOS Premium */
+
+.lito-login {
+  --primary: #5856D6;
+  --secondary: #BF5AF2;
+  --accent: #FF9F0A;
+  --success: #34C759;
+  --danger: #FF3B30;
+  --text-primary: #1C1C1E;
+  --text-muted: #8E8E93;
+  --bg-base: #F2F2F7;
+  --border-soft: rgba(60, 60, 67, 0.10);
+
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ambient gradient blobs */
+.lito-login-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 8% 12%, rgba(88, 86, 214, 0.18), transparent 60%),
+    radial-gradient(800px 500px at 95% 88%, rgba(191, 90, 242, 0.14), transparent 60%),
+    radial-gradient(700px 400px at 60% 50%, rgba(255, 159, 10, 0.06), transparent 60%);
+  animation: lito-bg-drift 24s ease-in-out infinite alternate;
+}
+
+@keyframes lito-bg-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(-12px, 8px, 0) scale(1.04); }
+}
+
+/* Main card */
+.lito-login-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78));
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 24px;
+  padding: 40px 36px 28px;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.06),
+    0 24px 64px rgba(88, 86, 214, 0.16),
+    0 8px 24px rgba(16, 24, 40, 0.06);
+  animation: lito-rise 480ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes lito-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Brand header */
+.lito-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.lito-login-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #5856D6, #6E6BD8 70%, #BF5AF2 130%);
+  color: #fff;
+  box-shadow:
+    0 8px 22px rgba(88, 86, 214, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.lito-login-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0;
+  background: linear-gradient(135deg, #5856D6, #BF5AF2 70%, #FF6B35 130%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 28px;
+  display: flex;
+  flex-direction: column;
+}
+.lito-login-tagline {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Form */
+.lito-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.lito-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lito-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding-left: 4px;
+  text-transform: uppercase;
+}
+.lito-field-input {
+  height: 48px;
+  padding: 0 16px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: rgba(60, 60, 67, 0.04);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  transition: border-color 200ms, background 200ms, box-shadow 200ms;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+.lito-field-input::placeholder {
+  color: rgba(60, 60, 67, 0.40);
+}
+.lito-field-input:hover {
+  background: rgba(60, 60, 67, 0.06);
+}
+.lito-field-input:focus {
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(88, 86, 214, 0.16);
+}
+.lito-field-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Submit button */
+.lito-login-submit {
+  position: relative;
+  height: 52px;
+  margin-top: 6px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  color: #fff;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #5856D6 0%, #6E6BD8 80%, #BF5AF2 130%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow:
+    0 8px 22px rgba(88, 86, 214, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  overflow: hidden;
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 200ms;
+}
+.lito-login-submit::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 800ms ease;
+  pointer-events: none;
+}
+.lito-login-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 28px rgba(88, 86, 214, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.lito-login-submit:hover:not(:disabled)::after {
+  transform: translateX(100%);
+}
+.lito-login-submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+.lito-login-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.lito-spin {
+  animation: lito-rotate 900ms linear infinite;
+}
+@keyframes lito-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* Error alert */
+.lito-login-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 59, 48, 0.08);
+  border: 1px solid rgba(255, 59, 48, 0.20);
+  border-radius: 12px;
+  color: #C0271F;
+  font-size: 13px;
+  font-weight: 500;
+  animation: lito-shake 360ms;
+}
+@keyframes lito-shake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-6px); }
+  75%      { transform: translateX(6px); }
+}
+
+/* Footer links */
+.lito-login-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.lito-login-link {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 160ms;
+}
+.lito-login-link:hover {
+  color: #4847C7;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lito-login-link.strong {
+  font-weight: 700;
+}
+.lito-login-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border-soft);
+}
+.lito-login-signup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.lito-login-copyright {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* Focus accessibility */
+.lito-login *:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(88, 86, 214, 0.20);
+  border-radius: 10px;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .lito-login-card {
+    padding: 28px 22px 22px;
+    border-radius: 20px;
+  }
+  .lito-login-title {
+    font-size: 22px;
+  }
+  .lito-login-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+}
