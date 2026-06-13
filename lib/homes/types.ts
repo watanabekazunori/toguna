@@ -394,7 +394,7 @@ export interface HomesMeeting {
   meeting_seq: number
   scheduled_at: string | null
   meeting_type: 'phone' | 'web' | null
-  status: 'done' | 'rescheduled' | 'disappeared'
+  status: 'done' | 'rescheduled' | 'disappeared' | 'pending_email' | 'pending_handoff'
   contact_person_name: string | null
   contact_person_role: string | null
   meeting_content: string | null
@@ -540,6 +540,21 @@ export interface HomesNotification {
   payload: Record<string, unknown> | null
   fired_at: string
   read_at: string | null
+}
+
+// GAP-I: アポ→クローザー手動振り分け (議事録 5.3)
+// migration 20260503030000_p0_implementation.sql のスキーマに対応
+export interface HomesHandoffAssignment {
+  id: string
+  meeting_id: string
+  closer_user_id: string
+  scheduled_at: string
+  duration_minutes: number
+  assigned_by: string | null
+  status: 'scheduled' | 'completed' | 'no_show' | 'cancelled'
+  memo: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface HomesAuditSyncLog {
