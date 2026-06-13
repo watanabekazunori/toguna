@@ -1,21 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Phone, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import './login.css'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -24,27 +17,38 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      // まず認証
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (authError) {
-        if (authError.message === 'Invalid login credentials') {
-          setError('メールアドレスまたはパスワードが正しくありません')
-        } else {
-          setError(authError.message)
-        }
+        setError(
+          authError.message === 'Invalid login credentials'
+            ? 'メールアドレスまたはパスワードが正しくありません'
+            : authError.message
+        )
         setIsLoading(false)
         return
       }
 
-      // 認証成功後、operatorsテーブルからロールを取得（リトライ付き）
-      console.log('Login successful, fetching operator role for:', email)
+      // HOME'S ユーザーチェック
+      try {
+        const { data: homesUser } = await supabase
+          .from('homes_users')
+          .select('id')
+          .eq('auth_user_id', authData.user?.id)
+          .maybeSingle()
+        if (homesUser?.id) {
+          window.location.href = '/homes'
+          return
+        }
+      } catch {
+        // フォールスルー
+      }
 
+      // レガシー: operators
       let role: string | null = null
-
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const operatorPromise = supabase
@@ -52,36 +56,25 @@ export default function LoginPage() {
             .select('role')
             .eq('email', email)
             .single()
-
           const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Operator query timeout')), 4000)
           )
-
           interface OperatorQueryResult {
             data?: { role: string } | null
             error?: { code: string } | null
           }
-
           const result = await Promise.race<OperatorQueryResult>([operatorPromise, timeoutPromise])
           if (result.data?.role) {
             role = result.data.role
-            // user_metadataにキャッシュ
             supabase.auth.updateUser({ data: { role } }).catch(() => {})
             break
           }
-          if (result.error?.code === 'PGRST116') break // レコードなし
-        } catch (err) {
-          console.warn(`Operator query attempt ${attempt}/3 failed:`, err)
+          if (result.error?.code === 'PGRST116') break
+        } catch {
           if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt))
         }
       }
-
-      // フォールバック: user_metadataからロール復元
-      if (!role) {
-        role = authData.user?.user_metadata?.role || 'operator'
-      }
-
-      console.log('Determined role:', role)
+      if (!role) role = authData.user?.user_metadata?.role || 'operator'
 
       if (role === 'director') {
         window.location.href = '/director'
@@ -96,37 +89,38 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-2xl border-0">
+    <div className="lito-login">
+      <div className="lito-login-bg" aria-hidden />
+      <div className="lito-login-card">
         {/* Logo */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-500 rounded-xl shadow-lg shadow-blue-500/30">
-              <Phone className="h-8 w-8 text-white" />
-            </div>
+        <div className="lito-login-brand">
+          <div className="lito-login-logo">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 4h3l2 5-2 1.5a11 11 0 0 0 5.5 5.5L15 14l5 2v3a2 2 0 0 1-2 2A14 14 0 0 1 4 7a2 2 0 0 1 1-3z" />
+            </svg>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent">
+          <h1 className="lito-login-title">
             TOGUNA
+            <span className="lito-login-tagline">HOME&apos;S Operation Hub</span>
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            営業支援プラットフォーム
-          </p>
         </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-4">
+        {/* Form */}
+        <form onSubmit={handleLogin} className="lito-login-form">
           {error && (
-            <Alert variant="destructive" className="bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+            <div className="lito-login-error" role="alert">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>{error}</span>
+            </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-sm font-medium">
-              メールアドレス
-            </Label>
-            <Input
+          <div className="lito-field">
+            <label htmlFor="email" className="lito-field-label">メールアドレス</label>
+            <input
               id="email"
               type="email"
               placeholder="email@example.com"
@@ -134,15 +128,14 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-              className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
+              autoComplete="email"
+              className="lito-field-input"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-sm font-medium">
-              パスワード
-            </Label>
-            <Input
+          <div className="lito-field">
+            <label htmlFor="password" className="lito-field-label">パスワード</label>
+            <input
               id="password"
               type="password"
               placeholder="••••••••"
@@ -150,53 +143,43 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
-              className="h-12 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500"
+              autoComplete="current-password"
+              className="lito-field-input"
             />
           </div>
 
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl transition-all duration-300"
-          >
+          <button type="submit" disabled={isLoading} className="lito-login-submit">
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ログイン中...
+                <svg className="lito-spin" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+                </svg>
+                <span>ログイン中...</span>
               </>
             ) : (
-              'ログイン'
+              <>
+                <span>ログイン</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="13 6 19 12 13 18" />
+                </svg>
+              </>
             )}
-          </Button>
+          </button>
         </form>
 
         {/* Links */}
-        <div className="space-y-2 text-sm text-center">
-          <div>
-            <a
-              href="/forgot-password"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-            >
-              パスワードをお忘れの方
-            </a>
-          </div>
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-2">
-            <span className="text-slate-500 dark:text-slate-400">アカウントをお作りの方は</span>
-            <br />
-            <a
-              href="/signup"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
-            >
-              こちらからサインアップ
-            </a>
+        <div className="lito-login-footer">
+          <a href="/forgot-password" className="lito-login-link">パスワードをお忘れの方</a>
+          <div className="lito-login-divider" />
+          <div className="lito-login-signup">
+            <span>アカウントをお作りの方は</span>
+            <a href="/signup" className="lito-login-link strong">こちらからサインアップ</a>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-center text-xs text-slate-500 dark:text-slate-400">
-          <p>© 2026 TOGUNA. All rights reserved.</p>
-        </div>
-      </Card>
+        <p className="lito-login-copyright">© 2026 TOGUNA · FANVEST · LITO</p>
+      </div>
     </div>
   )
 }
