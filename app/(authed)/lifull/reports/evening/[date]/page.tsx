@@ -19,6 +19,8 @@ export function generateMetadata({ params }: Props) {
   return { title: `夜会レポート ${params.date} | 大手不動産情報ポータル運営企業` };
 }
 
+export const dynamic = "force-dynamic";
+
 export default function EveningReportPage({ params }: Props) {
   if (!isValidDate(params.date)) notFound();
 
