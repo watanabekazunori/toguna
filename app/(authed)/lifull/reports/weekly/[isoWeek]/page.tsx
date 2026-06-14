@@ -22,6 +22,8 @@ export function generateMetadata({ params }: Props) {
   };
 }
 
+export const dynamic = "force-dynamic";
+
 export default function WeeklyReportPage({ params }: Props) {
   if (!isValidIsoWeek(params.isoWeek)) notFound();
 
