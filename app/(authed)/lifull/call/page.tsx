@@ -7,6 +7,8 @@ import { createServerClient } from '@/lib/supabase-server-tenant'
 import { CallPageClient } from './CallPageClient'
 
 /** ロール確認 + データ初期取得を Server Component で行い、Client Component に渡す */
+export const dynamic = "force-dynamic";
+
 export default async function CallPage() {
   const supabase = await createServerClient()
 
