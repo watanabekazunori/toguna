@@ -35,6 +35,8 @@ interface DealRow {
 }
 
 /** 引き継ぎドラフト確認ページ */
+export const dynamic = "force-dynamic";
+
 export default async function HandoffPage({ params }: PageProps) {
   const supabase = createServerClient();
 
