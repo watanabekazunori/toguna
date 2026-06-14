@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { format, subDays, getISOWeek, getISOWeekYear } from "date-fns";
 
 export const metadata = { title: "レポート一覧 | 大手不動産情報ポータル運営企業" };
+export const dynamic = "force-dynamic";
 
 /** 過去 N 日の日付配列を返す */
 function recentDates(n: number): string[] {
@@ -26,7 +27,7 @@ function recentIsoWeeks(n: number): string[] {
 }
 
 export default async function ReportsIndexPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null; // middleware が先にリダイレクト
 
