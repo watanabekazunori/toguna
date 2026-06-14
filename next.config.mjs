@@ -29,6 +29,35 @@ const nextConfig = {
       fullUrl: false,
     },
   },
+  // Phase 6: googleapis / puppeteer 等が Node 標準を参照するため、client bundle で fallback
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...(config.resolve.fallback || {}),
+        fs: false,
+        net: false,
+        tls: false,
+        child_process: false,
+        crypto: false,
+        path: false,
+        os: false,
+        http: false,
+        https: false,
+        stream: false,
+        zlib: false,
+        buffer: false,
+      }
+    }
+    return config
+  },
+  // クライアント側に bundle すべきでない server-only パッケージ
+  serverExternalPackages: [
+    'googleapis',
+    'google-auth-library',
+    '@google-cloud/vertexai',
+    'puppeteer',
+    'exceljs',
+  ],
 }
 
 export default nextConfig
