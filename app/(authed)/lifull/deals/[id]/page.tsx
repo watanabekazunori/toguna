@@ -11,6 +11,8 @@ interface DealPageProps {
 }
 
 /** 商談詳細 Server Component — 認証・ロール確認・初期データ取得 */
+export const dynamic = "force-dynamic";
+
 export default async function DealDetailPage({ params }: DealPageProps) {
   const supabase = await createServerClient()
 
