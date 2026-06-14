@@ -24,6 +24,8 @@ interface SlotSettingsRow {
 }
 
 /** 週カレンダー + 設定編集の SC エントリ */
+export const dynamic = "force-dynamic";
+
 export default async function SlotsPage() {
   const supabase = createServerClient();
 
