@@ -420,3 +420,6 @@ export function isGoogleCalendarConfigured(): boolean {
   }
   return true;
 }
+
+// Phase 6: re-export from lifull-google-calendar for compatibility
+export { GoogleCalendarClient } from './lifull-google-calendar';
