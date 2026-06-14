@@ -32,7 +32,23 @@ export default function LoginPage() {
         return
       }
 
-      // HOME'S ユーザーチェック
+      // LIFULL HOME'S ユーザーチェック (Phase 6 新)
+      try {
+        const { data: lifullUser } = await supabase
+          .from('lifull_users')
+          .select('id, role')
+          .eq('auth_user_id', authData.user?.id)
+          .eq('tenant_id', 'lifull_homes')
+          .maybeSingle()
+        if (lifullUser?.id) {
+          window.location.href = '/lifull/dashboard'
+          return
+        }
+      } catch {
+        // フォールスルー
+      }
+
+      // HOME'S ユーザーチェック (旧 v0 互換)
       try {
         const { data: homesUser } = await supabase
           .from('homes_users')
